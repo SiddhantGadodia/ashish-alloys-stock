@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(mkdir C:\\\\Users\\\\Sidd\\\\projects\\\\stock\\\\app\\\\api\\\\forms\\\\purchase)",
+      "PowerShell(mkdir C:\\\\Users\\\\Sidd\\\\projects\\\\stock\\\\app\\\\api\\\\forms\\\\transfer)",
+      "PowerShell(mkdir C:\\\\Users\\\\Sidd\\\\projects\\\\stock\\\\app\\\\api\\\\forms\\\\production)",
+      "PowerShell(mkdir C:\\\\Users\\\\Sidd\\\\projects\\\\stock\\\\app\\\\api\\\\forms\\\\finished)",
+      "PowerShell(mkdir C:\\\\Users\\\\Sidd\\\\projects\\\\stock\\\\app\\\\api\\\\forms\\\\sales)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 5 -ErrorAction SilentlyContinue)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000 --max-time 5)",
+      "PowerShell(pip install openpyxl 2>&1)",
+      "PowerShell(pip install pandas 2>&1)"
+    ]
+  }
+}

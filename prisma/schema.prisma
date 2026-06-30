@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  password  String
+  role      String   // "staff" | "verifier"
+  createdAt DateTime @default(now())
+
+  purchaseEntries               PurchaseEntry[]
+  internalTransferInstructions  InternalTransfer[]     @relation("ITInstruction")
+  internalTransferActuals       InternalTransfer[]     @relation("ITActuals")
+  internalTransferVerifications InternalTransfer[]     @relation("ITVerification")
+  productionPlannings           ProductionPlanning[]
+  finishedGoodsActuals          FinishedGoodsTransfer[] @relation("FGTActuals")
+  finishedGoodsVerifications    FinishedGoodsTransfer[] @relation("FGTVerification")
+  salesInstructions             Sale[]                 @relation("SaleInstruction")
+  salesActuals                  Sale[]                 @relation("SaleActuals")
+  salesVerifications            Sale[]                 @relation("SaleVerification")
+  correctionLogs                CorrectionLog[]
+}
+
+model DropdownOption {
+  id       String  @id @default(cuid())
+  field    String  // "grade"|"size"|"supplyCondition"|"make"|"location"|"colourCode"|"customer"
+  value    String
+  isSystem Boolean @default(false)
+  active   Boolean @default(true)
+
+  @@unique([field, value])
+}
+
+// Live stock ledger — one row per lot
+model StockLot {
+  id              String   @id @default(cuid())
+  grade           String
+  size            String
+  supplyCondition String
+  make            String
+  location        String
+  pieces          Int?
+  quantity        Float
+  length          Float?
+  description     String
+  uidNo           String?
+  remarks         String?
+  dateCreated     DateTime
+  originForm      String   // "purchase"|"internal_transfer"|"finished_goods"
+  originId        String
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Per-location suspense totals
+model SuspenseTotal {
+  id       String @id @default(cuid())
+  location String @unique
+  total    Float  @default(0)
+}
+
+// Correction log — verifier-only
+model CorrectionLog {
+  id          String   @id @default(cuid())
+  tableRef    String
+  recordId    String
+  field       String
+  oldValue    String?
+  newValue    String?
+  action      String   // "edit"|"delete"
+  performedById String
+  performedBy User     @relation(fields: [performedById], references: [id])
+  performedAt DateTime @default(now())
+}
+
+// Form 0 — Purchase Entry
+model PurchaseEntry {
+  id              String   @id @default(cuid())
+  date            DateTime
+  grade           String
+  size            String
+  supplyCondition String
+  pieces          Int?
+  make            String
+  quantity        Float
+  length          Float?
+  description     String
+  location        String
+  uidNo           String?
+  remarks         String?
+  stockLotId      String?
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Form 1 — Internal Transfer
+model InternalTransfer {
+  id     String @id @default(cuid())
+  status String @default("instruction") // "instruction"|"actuals_filled"|"verified"
+
+  instrDate            DateTime?
+  instrGrade           String?
+  instrSize            String?
+  instrQuantity        Float?
+  instrMake            String?
+  instrUidNo           String?
+  instrPieces          Int?
+  instrSupplyCondition String?
+  instrLocationFrom    String?
+  instrLocationTo      String?
+  instrRemarks         String?
+  instrDescription     String?
+  instructedById       String?
+  instructedBy         User?     @relation("ITInstruction", fields: [instructedById], references: [id])
+  instructedAt         DateTime?
+
+  actDate            DateTime?
+  actGrade           String?
+  actSize            String?
+  actQuantity        Float?
+  actMake            String?
+  actUidNo           String?
+  actPieces          Int?
+  actSupplyCondition String?
+  actLocationFrom    String?
+  actLocationTo      String?
+  actRemarks         String?
+  actDescription     String?
+  actualsFilledById  String?
+  actualsFilledBy    User?     @relation("ITActuals", fields: [actualsFilledById], references: [id])
+  actualsFilledAt    DateTime?
+
+  lotSelections String? // JSON: [{lotId, assignedQty}]
+
+  verifiedById String?
+  verifiedBy   User?     @relation("ITVerification", fields: [verifiedById], references: [id])
+  verifiedAt   DateTime?
+
+  createdLotId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Form 2 — Production Planning (instruction only, no DB effect)
+model ProductionPlanning {
+  id                      String   @id @default(cuid())
+  date                    DateTime
+  grade                   String
+  rmSize                  String
+  quantity                Float
+  make                    String
+  conversionSizeTolerance String
+  length                  Float
+  colourCode              String
+  machines                String   // JSON array
+  additionalInstruction   String?
+  uidNo                   String?
+  createdById             String
+  createdBy               User     @relation(fields: [createdById], references: [id])
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+// Form 3 — Finished Goods Transfer
+model FinishedGoodsTransfer {
+  id     String @id @default(cuid())
+  status String @default("actuals_filled") // "actuals_filled"|"verified"
+
+  date            DateTime
+  gradeFinal      String
+  sizeFinal       String
+  quantityFinal   Float
+  make            String
+  uidNo           String?
+  pieces          Int?
+  supplyCondition String
+  locationInitial String
+  locationFinal   String
+  suspenseQty     Float    @default(0)
+  remarks         String?
+  sourceLotId     String?
+
+  actualsFilledById String?
+  actualsFilledBy   User?     @relation("FGTActuals", fields: [actualsFilledById], references: [id])
+  actualsFilledAt   DateTime?
+
+  verifiedById String?
+  verifiedBy   User?     @relation("FGTVerification", fields: [verifiedById], references: [id])
+  verifiedAt   DateTime?
+
+  createdLotId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Form 4 — Sales
+model Sale {
+  id     String @id @default(cuid())
+  status String @default("instruction") // "instruction"|"actuals_filled"|"verified"
+
+  instrDate            DateTime?
+  instrGrade           String?
+  instrSize            String?
+  instrQuantity        Float?
+  instrMake            String?
+  instrUidNo           String?
+  instrPieces          Int?
+  instrSupplyCondition String?
+  instrCustomer        String?
+  instrVehicleNo       String?
+  instrRemarks         String?
+  instructedById       String?
+  instructedBy         User?     @relation("SaleInstruction", fields: [instructedById], references: [id])
+  instructedAt         DateTime?
+
+  actDate            DateTime?
+  actGrade           String?
+  actSize            String?
+  actQuantity        Float?
+  actMake            String?
+  actUidNo           String?
+  actPieces          Int?
+  actSupplyCondition String?
+  actCustomer        String?
+  actVehicleNo       String?
+  actRemarks         String?
+  actualsFilledById  String?
+  actualsFilledBy    User?     @relation("SaleActuals", fields: [actualsFilledById], references: [id])
+  actualsFilledAt    DateTime?
+
+  lotSelections String? // JSON: [{lotId, assignedQty}]
+
+  verifiedById String?
+  verifiedBy   User?     @relation("SaleVerification", fields: [verifiedById], references: [id])
+  verifiedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
