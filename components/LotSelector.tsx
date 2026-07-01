@@ -98,6 +98,7 @@ export default function LotSelector({ filterByLocation, onSelectionChange }: Pro
               <th className="px-3 py-2"></th>
               <th className="px-3 py-2 font-medium text-gray-600">Grade</th>
               <th className="px-3 py-2 font-medium text-gray-600">Size</th>
+              <th className="px-3 py-2 font-medium text-gray-600">Supply Cond.</th>
               <th className="px-3 py-2 font-medium text-gray-600">Location</th>
               <th className="px-3 py-2 font-medium text-gray-600">Make</th>
               <th className="px-3 py-2 font-medium text-gray-600">Avail. Qty</th>
@@ -106,7 +107,7 @@ export default function LotSelector({ filterByLocation, onSelectionChange }: Pro
           </thead>
           <tbody>
             {lots.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-gray-400 py-6 text-sm">No lots found.</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-400 py-6 text-sm">No lots found.</td></tr>
             )}
             {lots.map((lot) => (
               <tr
@@ -119,6 +120,7 @@ export default function LotSelector({ filterByLocation, onSelectionChange }: Pro
                 </td>
                 <td className="px-3 py-2 font-medium">{lot.grade}</td>
                 <td className="px-3 py-2">{lot.size}</td>
+                <td className="px-3 py-2">{lot.supplyCondition}</td>
                 <td className="px-3 py-2">{lot.location}</td>
                 <td className="px-3 py-2">{lot.make}</td>
                 <td className="px-3 py-2 font-semibold">{lot.quantity.toFixed(3)}</td>

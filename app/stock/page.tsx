@@ -38,24 +38,40 @@ function distinct(lots: StockLot[], key: ColKey): string[] {
   return Array.from(new Set(lots.map((l) => l[key] ?? "").filter(Boolean))).sort();
 }
 
-function ColumnFilter({ label, values, selected, onChange }: { label: string; values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void }) {
+// Returns lots filtered by all columns EXCEPT the given key (for cascading dropdown values)
+function filteredExcept(lots: StockLot[], colFilters: Record<ColKey, Set<string>>, except: ColKey): StockLot[] {
+  return lots.filter((l) =>
+    COL_KEYS.every((k) => {
+      if (k === except) return true;
+      return colFilters[k].size === 0 || colFilters[k].has(l[k] ?? "");
+    })
+  );
+}
+
+function applyFilters(lots: StockLot[], colFilters: Record<ColKey, Set<string>>): StockLot[] {
+  return lots.filter((l) =>
+    COL_KEYS.every((k) => colFilters[k].size === 0 || colFilters[k].has(l[k] ?? ""))
+  );
+}
+
+function ColumnFilter({ label, values, selected, onChange }: {
+  label: string; values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const allSelected = values.every((v) => selected.has(v));
+  const allSelected = values.length > 0 && values.every((v) => selected.has(v));
   const someSelected = !allSelected && values.some((v) => selected.has(v));
-  const active = !allSelected;
+  const active = selected.size > 0 && !allSelected;
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  function toggleAll() {
-    onChange(allSelected ? new Set() : new Set(values));
-  }
+  function toggleAll() { onChange(allSelected ? new Set() : new Set(values)); }
   function toggle(v: string) {
     const next = new Set(selected);
     next.has(v) ? next.delete(v) : next.add(v);
@@ -66,11 +82,11 @@ function ColumnFilter({ label, values, selected, onChange }: { label: string; va
     <div ref={ref} className="relative inline-block">
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-1 font-medium whitespace-nowrap group ${active ? "text-blue-700" : "text-gray-600"}`}
+        className={`flex items-center gap-1 font-medium whitespace-nowrap ${active ? "text-blue-700" : "text-gray-600"}`}
       >
         {label}
         <span className={`text-[10px] ${active ? "text-blue-500" : "text-gray-400"}`}>▼</span>
-        {active && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+        {active && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block ml-0.5" />}
       </button>
       {open && (
         <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[160px] max-h-64 overflow-y-auto">
@@ -84,6 +100,7 @@ function ColumnFilter({ label, values, selected, onChange }: { label: string; va
             />
             <span className="text-sm font-semibold text-gray-700">(Select All)</span>
           </label>
+          {values.length === 0 && <p className="text-xs text-gray-400 px-3 py-2">No values</p>}
           {values.map((v) => (
             <label key={v} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-blue-50">
               <input type="checkbox" checked={selected.has(v)} onChange={() => toggle(v)} className="accent-blue-600" />
@@ -103,8 +120,10 @@ export default function StockPage() {
   const [lots, setLots] = useState<StockLot[]>([]);
   const [suspense, setSuspense] = useState<SuspenseTotal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [colFilters, setColFilters] = useState<Record<ColKey, Set<string>>>({ grade: new Set(), size: new Set(), supplyCondition: new Set(), make: new Set(), location: new Set(), description: new Set() });
-  const [initialized, setInitialized] = useState(false);
+  const [colFilters, setColFilters] = useState<Record<ColKey, Set<string>>>({
+    grade: new Set(), size: new Set(), supplyCondition: new Set(), make: new Set(), location: new Set(), description: new Set(),
+  });
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -114,16 +133,14 @@ export default function StockPage() {
     fetch("/api/stock")
       .then((r) => r.json())
       .then((d) => {
-        const fetchedLots = d.lots || [];
+        const fetchedLots: StockLot[] = d.lots || [];
         setLots(fetchedLots);
         setSuspense(d.suspense || []);
         setLoading(false);
-        if (!initialized) {
-          const init: Record<ColKey, Set<string>> = {} as Record<ColKey, Set<string>>;
-          COL_KEYS.forEach((k) => { init[k] = new Set(distinct(fetchedLots, k)); });
-          setColFilters(init);
-          setInitialized(true);
-        }
+        // Init filters: all values selected
+        const init: Record<ColKey, Set<string>> = {} as Record<ColKey, Set<string>>;
+        COL_KEYS.forEach((k) => { init[k] = new Set(distinct(fetchedLots, k)); });
+        setColFilters(init);
       });
   }, [status]);
 
@@ -133,17 +150,19 @@ export default function StockPage() {
     setColFilters((f) => ({ ...f, [k]: s }));
   }
 
-  function filteredLots(source: StockLot[]) {
-    return source.filter((l) =>
-      COL_KEYS.every((k) => {
-        const val = l[k] ?? "";
-        return colFilters[k].size === 0 || colFilters[k].has(val);
-      })
-    );
+  // Cascading: values shown in a column's dropdown = distinct values in lots filtered by all OTHER columns
+  function cascadeValues(key: ColKey): string[] {
+    return distinct(filteredExcept(lots, colFilters, key), key);
   }
 
-  const allDistinct = (key: ColKey) => distinct(lots, key);
-  const byForm = (form: string) => filteredLots(lots.filter((l) => l.originForm === form));
+  const filtered = applyFilters(lots, colFilters);
+  const byForm = (form: string) => applyFilters(lots.filter((l) => l.originForm === form), colFilters);
+
+  const BY_FORM_SECTIONS = [
+    { key: "purchase", label: "Purchase Entries" },
+    { key: "internal_transfer", label: "Internal Transfers" },
+    { key: "finished_goods", label: "Finished Goods" },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -153,32 +172,42 @@ export default function StockPage() {
 
         <div className="flex gap-2 mb-6 border-b border-gray-200">
           {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${tab === t ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${tab === t ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
               {t}
             </button>
           ))}
         </div>
 
         {tab === "All Lots" && (
-          <LotTable lots={filteredLots(lots)} loading={loading} colFilters={colFilters} allDistinct={allDistinct} setFilter={setFilter} />
+          <LotTable lots={filtered} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} />
         )}
 
         {tab === "By Form" && (
-          <div className="space-y-8">
-            {[
-              { key: "purchase", label: "Purchase Entries" },
-              { key: "internal_transfer", label: "Internal Transfers" },
-              { key: "finished_goods", label: "Finished Goods" },
-            ].map(({ key, label }) => (
-              <div key={key}>
-                <h2 className="text-lg font-semibold mb-3 text-gray-700">{label}</h2>
-                <LotTable lots={byForm(key)} loading={loading} colFilters={colFilters} allDistinct={allDistinct} setFilter={setFilter} />
-              </div>
-            ))}
+          <div className="space-y-4">
+            {BY_FORM_SECTIONS.map(({ key, label }) => {
+              const sectionLots = byForm(key);
+              const open = !!openSections[key];
+              return (
+                <div key={key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <button
+                    onClick={() => setOpenSections((s) => ({ ...s, [key]: !open }))}
+                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left"
+                  >
+                    <span className="text-base font-semibold text-gray-700">{label}</span>
+                    <span className="flex items-center gap-2 text-sm text-gray-400">
+                      <span>{sectionLots.length} lot{sectionLots.length !== 1 ? "s" : ""}</span>
+                      <span className="text-lg">{open ? "▲" : "▼"}</span>
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="border-t border-gray-100">
+                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -215,28 +244,22 @@ export default function StockPage() {
   );
 }
 
-function LotTable({ lots, loading, colFilters, allDistinct, setFilter }: {
-  lots: StockLot[];
-  loading: boolean;
+function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
+  lots: StockLot[]; loading: boolean;
   colFilters: Record<ColKey, Set<string>>;
-  allDistinct: (k: ColKey) => string[];
+  cascadeValues: (k: ColKey) => string[];
   setFilter: (k: ColKey, s: Set<string>) => void;
 }) {
   if (loading) return <p className="text-center text-gray-400 py-10 text-sm">Loading...</p>;
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-      <table className="w-full text-sm min-w-[900px]">
+      <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-gray-50 text-left">
           <tr>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Date</th>
             {COL_KEYS.map((k) => (
               <th key={k} className="px-3 py-3 whitespace-nowrap">
-                <ColumnFilter
-                  label={COL_LABELS[k]}
-                  values={allDistinct(k)}
-                  selected={colFilters[k]}
-                  onChange={(s) => setFilter(k, s)}
-                />
+                <ColumnFilter label={COL_LABELS[k]} values={cascadeValues(k)} selected={colFilters[k]} onChange={(s) => setFilter(k, s)} />
               </th>
             ))}
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
@@ -248,7 +271,7 @@ function LotTable({ lots, loading, colFilters, allDistinct, setFilter }: {
         </thead>
         <tbody>
           {lots.length === 0 && (
-            <tr><td colSpan={12} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
+            <tr><td colSpan={13} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
             <tr key={lot.id} className="border-t border-gray-100 hover:bg-gray-50">

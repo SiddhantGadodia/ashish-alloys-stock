@@ -14,6 +14,8 @@ interface Entry {
   instrSize?: string;
   instrQuantity?: number;
   instrMake?: string;
+  instrSupplyCondition?: string;
+  instrDescription?: string;
   instrLocationFrom?: string;
   instrLocationTo?: string;
   actQuantity?: number;
@@ -27,8 +29,6 @@ interface Entry {
 }
 
 interface LotSelection { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
-
-const emptyActuals = { date: "", grade: "", size: "", quantity: "", make: "", uidNo: "", pieces: "", supplyCondition: "", locationFrom: "", locationTo: "", remarks: "", description: "" };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   instruction: { label: "Instruction Issued", color: "bg-gray-100 text-gray-600" },
@@ -52,10 +52,9 @@ export default function TransferPage() {
   const [instrLots, setInstrLots] = useState<LotSelection[]>([]);
   const [instrForm, setInstrForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", remarks: "" });
 
-  // Actuals state
-  const [actualsId, setActualsId] = useState<string | null>(null);
-  const [actForm, setActForm] = useState(emptyActuals);
-  const [actLotSelections, setActLotSelections] = useState<LotSelection[]>([]);
+  // Actuals state — pre-filled from instruction
+  const [actualsEntry, setActualsEntry] = useState<Entry | null>(null);
+  const [actForm, setActForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", remarks: "" });
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -80,10 +79,16 @@ export default function TransferPage() {
   }
 
   const primaryLot = instrLots[0];
+  const maxQty = instrLots.reduce((sum, l) => sum + l.quantity, 0);
 
   async function submitInstruction(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError("");
     if (!primaryLot) { setError("No lot selected."); setSaving(false); return; }
+    const qty = parseFloat(instrForm.quantity);
+    if (isNaN(qty) || qty <= 0 || qty > maxQty) {
+      setError(`Quantity must be between 0 and ${maxQty.toFixed(3)}.`);
+      setSaving(false); return;
+    }
     const res = await fetch("/api/forms/transfer", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -109,13 +114,29 @@ export default function TransferPage() {
 
   async function submitActuals(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError("");
-    const res = await fetch(`/api/forms/transfer/${actualsId}`, {
+    if (!actualsEntry) return;
+    const res = await fetch(`/api/forms/transfer/${actualsEntry.id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "actuals", ...actForm, lotSelections: actLotSelections.map((l) => ({ lotId: l.lotId, assignedQty: l.assignedQty })) }),
+      body: JSON.stringify({
+        stage: "actuals",
+        date: actForm.date,
+        grade: actualsEntry.instrGrade,
+        size: actualsEntry.instrSize,
+        supplyCondition: actualsEntry.instrSupplyCondition,
+        make: actualsEntry.instrMake,
+        description: actualsEntry.instrDescription,
+        quantity: actForm.quantity,
+        locationFrom: actualsEntry.instrLocationFrom,
+        locationTo: actForm.locationTo,
+        pieces: actForm.pieces,
+        uidNo: actForm.uidNo,
+        remarks: actForm.remarks,
+        lotSelections: [],
+      }),
     });
     setSaving(false);
     if (!res.ok) { const d = await res.json(); setError(d.error || "Error"); return; }
-    setActualsId(null); setActForm(emptyActuals); load();
+    setActualsEntry(null); load();
   }
 
   async function verify(id: string) {
@@ -150,9 +171,7 @@ export default function TransferPage() {
     navigator.clipboard.writeText(lines.join("\n")).then(() => alert("Card copied to clipboard!"));
   }
 
-  const onActLotChange = useCallback((s: LotSelection[]) => setActLotSelections(s), []);
   const onInstrLotChange = useCallback((s: LotSelection[]) => setInstrLots(s), []);
-
   const setI = (k: string, v: string) => setInstrForm((f) => ({ ...f, [k]: v }));
   const setA = (k: string, v: string) => setActForm((f) => ({ ...f, [k]: v }));
 
@@ -189,7 +208,6 @@ export default function TransferPage() {
               ))}
             </div>
 
-            {/* Step 1 */}
             {instrStep === 1 && (
               <div className="space-y-4 max-w-sm">
                 <h2 className="text-base font-semibold">Step 1 — Select Source Location</h2>
@@ -204,7 +222,6 @@ export default function TransferPage() {
               </div>
             )}
 
-            {/* Step 2 */}
             {instrStep === 2 && (
               <div className="space-y-4">
                 <h2 className="text-base font-semibold">Step 2 — Select Lots to Transfer <span className="text-gray-400 font-normal text-sm">from {locationFrom}</span></h2>
@@ -217,12 +234,9 @@ export default function TransferPage() {
               </div>
             )}
 
-            {/* Step 3 */}
             {instrStep === 3 && primaryLot && (
               <div className="space-y-4">
                 <h2 className="text-base font-semibold">Step 3 — Issue Instruction</h2>
-
-                {/* Read-only lot summary */}
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
                   <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2">From Selected Lot(s)</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -232,14 +246,20 @@ export default function TransferPage() {
                     <div><span className="text-gray-500">Supply Cond.:</span> <span className="font-semibold">{primaryLot.supplyCondition}</span></div>
                     <div><span className="text-gray-500">Description:</span> <span className="font-semibold">{primaryLot.description}</span></div>
                     <div><span className="text-gray-500">From:</span> <span className="font-semibold">{locationFrom}</span></div>
-                    {instrLots.length > 1 && <div className="col-span-full text-xs text-purple-600">{instrLots.length} lots selected (total {instrLots.reduce((a, l) => a + l.quantity, 0).toFixed(3)} MT)</div>}
                   </div>
+                  {instrLots.length > 1 && (
+                    <p className="text-xs text-purple-600 mt-2">{instrLots.length} lots selected · total available: {maxQty.toFixed(3)} MT</p>
+                  )}
                 </div>
 
                 <form onSubmit={submitInstruction} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <Field label="Date" required><input type="date" required value={instrForm.date} onChange={(e) => setI("date", e.target.value)} className={inputCls()} /></Field>
-                    <Field label="Quantity to Transfer" required><input type="number" step="0.001" required value={instrForm.quantity} onChange={(e) => setI("quantity", e.target.value)} className={inputCls()} /></Field>
+                    <Field label={`Quantity (max ${maxQty.toFixed(3)})`} required>
+                      <input type="number" step="0.001" required min="0.001" max={maxQty}
+                        value={instrForm.quantity} onChange={(e) => setI("quantity", e.target.value)} className={inputCls()} />
+                      <p className="text-xs text-gray-400 mt-0.5">0 – {maxQty.toFixed(3)} MT available</p>
+                    </Field>
                     <Field label="Location To" required><DynamicSelect field="location" value={instrForm.locationTo} onChange={(v) => setI("locationTo", v)} required /></Field>
                     <Field label="Pieces"><input type="number" value={instrForm.pieces} onChange={(e) => setI("pieces", e.target.value)} className={inputCls()} /></Field>
                     <Field label="UID No."><input type="text" value={instrForm.uidNo} onChange={(e) => setI("uidNo", e.target.value)} className={inputCls()} /></Field>
@@ -256,33 +276,37 @@ export default function TransferPage() {
           </div>
         )}
 
-        {/* Actuals form */}
-        {actualsId && (
+        {/* Actuals form — pre-filled from instruction lot */}
+        {actualsEntry && (
           <div className="bg-white rounded-2xl border border-amber-200 p-6 mb-6 shadow-sm">
             <h2 className="text-base font-semibold mb-4">Stage 2 — Fill Actuals</h2>
+
+            {/* Read-only lot info from instruction */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">From Original Instruction Lot</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                <div><span className="text-gray-500">Grade:</span> <span className="font-semibold">{actualsEntry.instrGrade}</span></div>
+                <div><span className="text-gray-500">Size:</span> <span className="font-semibold">{actualsEntry.instrSize}</span></div>
+                <div><span className="text-gray-500">Make:</span> <span className="font-semibold">{actualsEntry.instrMake}</span></div>
+                <div><span className="text-gray-500">Supply Cond.:</span> <span className="font-semibold">{actualsEntry.instrSupplyCondition || "—"}</span></div>
+                <div><span className="text-gray-500">Description:</span> <span className="font-semibold">{actualsEntry.instrDescription || "—"}</span></div>
+                <div><span className="text-gray-500">From:</span> <span className="font-semibold">{actualsEntry.instrLocationFrom}</span></div>
+              </div>
+            </div>
+
             <form onSubmit={submitActuals} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Field label="Date" required><input type="date" required value={actForm.date} onChange={(e) => setA("date", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Grade" required><DynamicSelect field="grade" value={actForm.grade} onChange={(v) => setA("grade", v)} required /></Field>
-                <Field label="Size" required><DynamicSelect field="size" value={actForm.size} onChange={(v) => setA("size", v)} required /></Field>
-                <Field label="Supply Condition" required><DynamicSelect field="supplyCondition" value={actForm.supplyCondition} onChange={(v) => setA("supplyCondition", v)} required /></Field>
-                <Field label="Make" required><DynamicSelect field="make" value={actForm.make} onChange={(v) => setA("make", v)} required /></Field>
-                <Field label="Description"><DynamicSelect field="description" value={actForm.description} onChange={(v) => setA("description", v)} /></Field>
-                <Field label="Quantity" required><input type="number" step="0.001" required value={actForm.quantity} onChange={(e) => setA("quantity", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Location From" required><DynamicSelect field="location" value={actForm.locationFrom} onChange={(v) => setA("locationFrom", v)} required /></Field>
+                <Field label="Quantity (Actual)" required><input type="number" step="0.001" required value={actForm.quantity} onChange={(e) => setA("quantity", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Location To" required><DynamicSelect field="location" value={actForm.locationTo} onChange={(v) => setA("locationTo", v)} required /></Field>
                 <Field label="Pieces"><input type="number" value={actForm.pieces} onChange={(e) => setA("pieces", e.target.value)} className={inputCls()} /></Field>
                 <Field label="UID No."><input type="text" value={actForm.uidNo} onChange={(e) => setA("uidNo", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Remarks"><input type="text" value={actForm.remarks} onChange={(e) => setA("remarks", e.target.value)} className={inputCls()} /></Field>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">Select Source Lot(s)</p>
-                <LotSelector onSelectionChange={onActLotChange} />
-              </div>
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="flex gap-3">
                 <button type="submit" disabled={saving} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition">{saving ? "Saving..." : "Submit Actuals"}</button>
-                <button type="button" onClick={() => setActualsId(null)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
+                <button type="button" onClick={() => setActualsEntry(null)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
               </div>
             </form>
           </div>
@@ -315,7 +339,13 @@ export default function TransferPage() {
                     {isVerifier && <td className="px-4 py-3 text-gray-500 text-xs">{e.instructedBy?.name || "—"}</td>}
                     <td className="px-4 py-3 flex gap-2 flex-wrap">
                       <button onClick={() => generateCard(e)} className="text-purple-600 hover:underline text-xs">Copy Card</button>
-                      {e.status === "instruction" && <button onClick={() => { setActualsId(e.id); setActForm(emptyActuals); setError(""); }} className="text-amber-600 hover:underline text-xs">Fill Actuals</button>}
+                      {e.status === "instruction" && (
+                        <button onClick={() => {
+                          setActualsEntry(e);
+                          setActForm({ date: "", quantity: "", locationTo: e.instrLocationTo || "", pieces: "", uidNo: "", remarks: "" });
+                          setError("");
+                        }} className="text-amber-600 hover:underline text-xs">Fill Actuals</button>
+                      )}
                       {e.status === "actuals_filled" && isVerifier && <button onClick={() => verify(e.id)} className="text-green-600 hover:underline text-xs">Verify</button>}
                       {(e.status !== "verified" || isVerifier) && <button onClick={() => handleDelete(e.id)} className="text-red-500 hover:underline text-xs">Delete</button>}
                     </td>
