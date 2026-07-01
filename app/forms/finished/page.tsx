@@ -26,9 +26,9 @@ interface Entry {
   createdAt: string;
 }
 
-interface LotSelection { lotId: string; assignedQty: number }
+interface LotInfo { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
 
-const empty = { date: "", gradeFinal: "", sizeFinal: "", quantityFinal: "", make: "", uidNo: "", pieces: "", supplyCondition: "", locationInitial: "", locationFinal: "", suspenseQty: "0", remarks: "" };
+const emptyForm = { date: "", quantityFinal: "", locationFinal: "", suspenseQty: "0", pieces: "", uidNo: "", remarks: "" };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   actuals_filled: { label: "Actuals Filled", color: "bg-amber-100 text-amber-700" },
@@ -42,11 +42,12 @@ export default function FinishedPage() {
   const isVerifier = user?.role === "verifier";
   const [entries, setEntries] = useState<Entry[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(empty);
+  const [step, setStep] = useState(1);
+  const [locationInitial, setLocationInitial] = useState("");
+  const [lotSelections, setLotSelections] = useState<LotInfo[]>([]);
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [lotSelections, setLotSelections] = useState<LotSelection[]>([]);
-  const [filterLocation, setFilterLocation] = useState("");
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -54,19 +55,59 @@ export default function FinishedPage() {
   useEffect(() => { if (status === "authenticated") load(); }, [status]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const onLotChange = useCallback((s: LotSelection[]) => setLotSelections(s), []);
+
+  const onLotChange = useCallback((selections: { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }[]) => {
+    setLotSelections(selections);
+  }, []);
+
+  function openForm() {
+    setShowForm(true);
+    setStep(1);
+    setLocationInitial("");
+    setLotSelections([]);
+    setForm(emptyForm);
+    setError("");
+  }
+
+  function closeForm() {
+    setShowForm(false);
+  }
+
+  function goStep2() {
+    if (!locationInitial) { setError("Please select Location Initial."); return; }
+    setError("");
+    setStep(2);
+  }
+
+  function goStep3() {
+    if (lotSelections.length === 0) { setError("Please select a source lot."); return; }
+    setError("");
+    setStep(3);
+  }
+
+  const selectedLot = lotSelections[0];
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true); setError("");
-    const sourceLotId = lotSelections[0]?.lotId;
-    if (!sourceLotId) { setError("Please select a source lot."); setSaving(false); return; }
+    e.preventDefault();
+    if (!selectedLot) { setError("No lot selected."); return; }
+    setSaving(true); setError("");
     const res = await fetch("/api/forms/finished", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, sourceLotId }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        gradeFinal: selectedLot.grade,
+        sizeFinal: selectedLot.size,
+        supplyCondition: selectedLot.supplyCondition,
+        make: selectedLot.make,
+        locationInitial,
+        sourceLotId: selectedLot.lotId,
+      }),
     });
     setSaving(false);
     if (!res.ok) { const d = await res.json(); setError(d.error || "Error"); return; }
-    setShowForm(false); setForm(empty); load();
+    setShowForm(false);
+    load();
   }
 
   async function verify(id: string) {
@@ -97,46 +138,92 @@ export default function FinishedPage() {
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Form 3</p>
             <h1 className="text-2xl font-bold">Finished Goods Transfer</h1>
           </div>
-          <button onClick={() => { setShowForm(true); setForm(empty); setError(""); setLotSelections([]); setFilterLocation(""); }}
-            className="bg-amber-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 transition">
+          <button onClick={openForm} className="bg-amber-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 transition">
             + New Entry
           </button>
         </div>
 
         {showForm && (
           <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6 shadow-sm">
-            <h2 className="text-base font-semibold mb-4">New Finished Goods Transfer</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Field label="Date" required><input type="date" required value={form.date} onChange={(e) => set("date", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Grade (Final)" required><DynamicSelect field="grade" value={form.gradeFinal} onChange={(v) => set("gradeFinal", v)} required /></Field>
-                <Field label="Size (Final)" required><DynamicSelect field="size" value={form.sizeFinal} onChange={(v) => set("sizeFinal", v)} required /></Field>
-                <Field label="Quantity (Final)" required><input type="number" step="0.001" required value={form.quantityFinal} onChange={(e) => set("quantityFinal", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Make" required><DynamicSelect field="make" value={form.make} onChange={(v) => set("make", v)} required /></Field>
-                <Field label="Supply Condition" required><DynamicSelect field="supplyCondition" value={form.supplyCondition} onChange={(v) => set("supplyCondition", v)} required /></Field>
+            {/* Step indicator */}
+            <div className="flex items-center gap-3 mb-6">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${step === s ? "bg-amber-600 text-white" : step > s ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"}`}>
+                    {step > s ? "✓" : s}
+                  </div>
+                  <span className={`text-sm ${step === s ? "text-amber-700 font-semibold" : "text-gray-400"}`}>
+                    {s === 1 ? "Location" : s === 2 ? "Select Lot" : "Fill Details"}
+                  </span>
+                  {s < 3 && <span className="text-gray-300 ml-1">›</span>}
+                </div>
+              ))}
+            </div>
+
+            {/* Step 1: Location Initial */}
+            {step === 1 && (
+              <div className="space-y-4 max-w-sm">
+                <h2 className="text-base font-semibold">Step 1 — Select Source Location</h2>
                 <Field label="Location Initial" required>
-                  <DynamicSelect field="location" value={form.locationInitial} onChange={(v) => { set("locationInitial", v); setFilterLocation(v); }} required />
+                  <DynamicSelect field="location" value={locationInitial} onChange={setLocationInitial} required />
                 </Field>
-                <Field label="Location Final" required><DynamicSelect field="location" value={form.locationFinal} onChange={(v) => set("locationFinal", v)} required /></Field>
-                <Field label="Suspense Qty"><input type="number" step="0.001" min="0" value={form.suspenseQty} onChange={(e) => set("suspenseQty", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Pieces"><input type="number" value={form.pieces} onChange={(e) => set("pieces", e.target.value)} className={inputCls()} /></Field>
-                <Field label="UID No."><input type="text" value={form.uidNo} onChange={(e) => set("uidNo", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Remarks"><input type="text" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} className={inputCls()} /></Field>
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+                <div className="flex gap-3">
+                  <button type="button" onClick={goStep2} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 transition">Next →</button>
+                  <button type="button" onClick={closeForm} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">Select Source Lot {filterLocation && <span className="text-gray-400 font-normal">(showing lots at: {filterLocation})</span>}</p>
-                {filterLocation ? (
-                  <LotSelector filterByLocation={filterLocation} onSelectionChange={onLotChange} />
-                ) : (
-                  <p className="text-sm text-gray-400">Select Location Initial first to filter lots.</p>
-                )}
+            )}
+
+            {/* Step 2: Select Lot */}
+            {step === 2 && (
+              <div className="space-y-4">
+                <h2 className="text-base font-semibold">Step 2 — Select Source Lot <span className="text-gray-400 font-normal text-sm">at {locationInitial}</span></h2>
+                <LotSelector filterByLocation={locationInitial} onSelectionChange={onLotChange} />
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+                <div className="flex gap-3">
+                  <button type="button" onClick={goStep3} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 transition">Next →</button>
+                  <button type="button" onClick={() => setStep(1)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
+                </div>
               </div>
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-              <div className="flex gap-3">
-                <button type="submit" disabled={saving} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition">{saving ? "Saving..." : "Submit"}</button>
-                <button type="button" onClick={() => setShowForm(false)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
+            )}
+
+            {/* Step 3: Fill Details */}
+            {step === 3 && selectedLot && (
+              <div className="space-y-4">
+                <h2 className="text-base font-semibold">Step 3 — Fill Transfer Details</h2>
+
+                {/* Read-only lot info from selection */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">From Selected Lot</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-gray-500">Grade:</span> <span className="font-semibold">{selectedLot.grade}</span></div>
+                    <div><span className="text-gray-500">Size:</span> <span className="font-semibold">{selectedLot.size}</span></div>
+                    <div><span className="text-gray-500">Make:</span> <span className="font-semibold">{selectedLot.make}</span></div>
+                    <div><span className="text-gray-500">Supply Cond.:</span> <span className="font-semibold">{selectedLot.supplyCondition}</span></div>
+                    <div><span className="text-gray-500">Description:</span> <span className="font-semibold">{selectedLot.description}</span></div>
+                    <div><span className="text-gray-500">From:</span> <span className="font-semibold">{locationInitial}</span></div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Field label="Date" required><input type="date" required value={form.date} onChange={(e) => set("date", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Quantity (Final)" required><input type="number" step="0.001" required value={form.quantityFinal} onChange={(e) => set("quantityFinal", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Location Final" required><DynamicSelect field="location" value={form.locationFinal} onChange={(v) => set("locationFinal", v)} required /></Field>
+                    <Field label="Suspense Qty"><input type="number" step="0.001" min="0" value={form.suspenseQty} onChange={(e) => set("suspenseQty", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Pieces"><input type="number" value={form.pieces} onChange={(e) => set("pieces", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="UID No."><input type="text" value={form.uidNo} onChange={(e) => set("uidNo", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Remarks"><input type="text" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} className={inputCls()} /></Field>
+                  </div>
+                  {error && <p className="text-red-500 text-sm">{error}</p>}
+                  <div className="flex gap-3">
+                    <button type="submit" disabled={saving} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition">{saving ? "Saving..." : "Submit"}</button>
+                    <button type="button" onClick={() => setStep(2)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
+                  </div>
+                </form>
               </div>
-            </form>
+            )}
           </div>
         )}
 

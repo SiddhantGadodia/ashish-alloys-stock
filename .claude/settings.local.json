@@ -10,7 +10,9 @@
       "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 5 -ErrorAction SilentlyContinue)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000 --max-time 5)",
       "PowerShell(pip install openpyxl 2>&1)",
-      "PowerShell(pip install pandas 2>&1)"
+      "PowerShell(pip install pandas 2>&1)",
+      "Read(//c/Users/Sidd/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/f5f12d1d-adf3-4189-be24-3d19139d5b07/b77e7fd4-602f-4a78-8eb5-66d5abf2f1b9/skills/xlsx/**)",
+      "Bash(python -)"
     ]
   }
 }

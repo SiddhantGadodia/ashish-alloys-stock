@@ -18,10 +18,16 @@ interface StockLot {
 interface LotSelection {
   lotId: string;
   assignedQty: number;
+  grade: string;
+  size: string;
+  supplyCondition: string;
+  make: string;
+  description: string;
+  quantity: number;
 }
 
 interface Props {
-  filterByLocation?: string; // For Form 3 — filter by location only
+  filterByLocation?: string;
   onSelectionChange: (selections: LotSelection[]) => void;
 }
 
@@ -42,7 +48,16 @@ export default function LotSelector({ filterByLocation, onSelectionChange }: Pro
     onSelectionChange(
       selected
         .filter((s) => s.assignedQty && parseFloat(s.assignedQty) > 0)
-        .map((s) => ({ lotId: s.lot.id, assignedQty: parseFloat(s.assignedQty) }))
+        .map((s) => ({
+          lotId: s.lot.id,
+          assignedQty: parseFloat(s.assignedQty),
+          grade: s.lot.grade,
+          size: s.lot.size,
+          supplyCondition: s.lot.supplyCondition,
+          make: s.lot.make,
+          description: s.lot.description,
+          quantity: s.lot.quantity,
+        }))
     );
   }, [selected, onSelectionChange]);
 
@@ -64,7 +79,7 @@ export default function LotSelector({ filterByLocation, onSelectionChange }: Pro
     <div className="space-y-4">
       {!filterByLocation && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {(["grade","size","supplyCondition","make","location","description"] as const).map((k) => (
+          {(["grade", "size", "supplyCondition", "make", "location", "description"] as const).map((k) => (
             <input
               key={k}
               value={filters[k]}

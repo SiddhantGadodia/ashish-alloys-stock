@@ -22,7 +22,7 @@ interface Entry {
   createdAt: string;
 }
 
-interface LotSelection { lotId: string; assignedQty: number }
+interface LotSelection { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
 
 const emptyInstr = { date: "", grade: "", size: "", quantity: "", make: "", uidNo: "", pieces: "", supplyCondition: "", customer: "", vehicleNo: "", remarks: "" };
 
