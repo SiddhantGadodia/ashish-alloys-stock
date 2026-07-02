@@ -50,11 +50,11 @@ export default function TransferPage() {
   const [instrStep, setInstrStep] = useState(1);
   const [locationFrom, setLocationFrom] = useState("");
   const [instrLots, setInstrLots] = useState<LotSelection[]>([]);
-  const [instrForm, setInstrForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", remarks: "" });
+  const [instrForm, setInstrForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", subLoc: "", remarks: "" });
 
   // Actuals state — pre-filled from instruction
   const [actualsEntry, setActualsEntry] = useState<Entry | null>(null);
-  const [actForm, setActForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", remarks: "" });
+  const [actForm, setActForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", subLoc: "", remarks: "" });
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -104,6 +104,7 @@ export default function TransferPage() {
         locationTo: instrForm.locationTo,
         pieces: instrForm.pieces,
         uidNo: instrForm.uidNo,
+        subLoc: instrForm.subLoc,
         remarks: instrForm.remarks,
       }),
     });
@@ -130,6 +131,7 @@ export default function TransferPage() {
         locationTo: actForm.locationTo,
         pieces: actForm.pieces,
         uidNo: actForm.uidNo,
+        subLoc: actForm.subLoc,
         remarks: actForm.remarks,
         lotSelections: [],
       }),
@@ -263,6 +265,7 @@ export default function TransferPage() {
                     <Field label="Location To" required><DynamicSelect field="location" value={instrForm.locationTo} onChange={(v) => setI("locationTo", v)} required /></Field>
                     <Field label="Pieces"><input type="number" value={instrForm.pieces} onChange={(e) => setI("pieces", e.target.value)} className={inputCls()} /></Field>
                     <Field label="UID No."><input type="text" value={instrForm.uidNo} onChange={(e) => setI("uidNo", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Sub Loc"><input type="text" value={instrForm.subLoc} onChange={(e) => setI("subLoc", e.target.value)} className={inputCls()} /></Field>
                     <Field label="Remarks"><input type="text" value={instrForm.remarks} onChange={(e) => setI("remarks", e.target.value)} className={inputCls()} /></Field>
                   </div>
                   {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -301,6 +304,7 @@ export default function TransferPage() {
                 <Field label="Location To" required><DynamicSelect field="location" value={actForm.locationTo} onChange={(v) => setA("locationTo", v)} required /></Field>
                 <Field label="Pieces"><input type="number" value={actForm.pieces} onChange={(e) => setA("pieces", e.target.value)} className={inputCls()} /></Field>
                 <Field label="UID No."><input type="text" value={actForm.uidNo} onChange={(e) => setA("uidNo", e.target.value)} className={inputCls()} /></Field>
+                <Field label="Sub Loc"><input type="text" value={actForm.subLoc} onChange={(e) => setA("subLoc", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Remarks"><input type="text" value={actForm.remarks} onChange={(e) => setA("remarks", e.target.value)} className={inputCls()} /></Field>
               </div>
               {error && <p className="text-red-500 text-sm">{error}</p>}

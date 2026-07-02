@@ -266,13 +266,14 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
             <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["description"]} values={cascadeValues("description")} selected={colFilters["description"]} onChange={(s) => setFilter("description", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
+            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
           </tr>
         </thead>
         <tbody>
           {lots.length === 0 && (
-            <tr><td colSpan={13} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
+            <tr><td colSpan={14} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
             <tr key={lot.id} className="border-t border-gray-100 hover:bg-gray-50">
@@ -290,6 +291,7 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
               </td>
               <td className="px-3 py-2">{lot.uidNo ?? "—"}</td>
               <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
+              <td className="px-3 py-2">{(lot as { subLoc?: string | null }).subLoc ?? "—"}</td>
               <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
               <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
             </tr>

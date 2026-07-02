@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   if (error) return error;
   const user = session!.user as { id: string };
   const body = await req.json();
-  const { date, gradeFinal, sizeFinal, quantityFinal, make, uidNo, pieces, supplyCondition, locationInitial, locationFinal, suspenseQty, remarks, sourceLotId } = body;
+  const { date, gradeFinal, sizeFinal, quantityFinal, make, uidNo, pieces, subLocInitial, subLocFinal, supplyCondition, locationInitial, locationFinal, suspenseQty, remarks, sourceLotId } = body;
 
   if (!date || !gradeFinal || !sizeFinal || !quantityFinal || !make || !supplyCondition || !locationInitial || !locationFinal || !sourceLotId) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
       status: "actuals_filled",
       date: new Date(date), gradeFinal, sizeFinal, quantityFinal: parseFloat(quantityFinal),
       make, uidNo: uidNo || null, pieces: pieces ? parseInt(pieces) : null,
+      subLocInitial: subLocInitial || null, subLocFinal: subLocFinal || null,
       supplyCondition, locationInitial, locationFinal,
       suspenseQty: parseFloat(suspenseQty) || 0,
       remarks: remarks || null, sourceLotId,

@@ -25,7 +25,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const { date, grade, size, supplyCondition, pieces, make, quantity, length, description, location, uidNo, remarks } = body;
+  const { date, grade, size, supplyCondition, pieces, make, quantity, length, description, location, uidNo, subLoc, remarks } = body;
   const newQty = parseFloat(quantity);
 
   // No-negative check: if qty reduced, make sure lot still has enough
@@ -40,7 +40,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 
   // Log corrections
-  const fields = ["date","grade","size","supplyCondition","pieces","make","quantity","length","description","location","uidNo","remarks"];
+  const fields = ["date","grade","size","supplyCondition","pieces","make","quantity","length","description","location","uidNo","subLoc","remarks"];
   const logs = fields
     .filter((f) => String((existing as Record<string, unknown>)[f] ?? "") !== String(body[f] ?? ""))
     .map((f) => ({
@@ -58,7 +58,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         pieces: pieces ? parseInt(pieces) : null,
         make, quantity: newQty,
         length: length ? parseFloat(length) : null,
-        description, location, uidNo: uidNo || null, remarks: remarks || null,
+        description, location, uidNo: uidNo || null, subLoc: subLoc || null, remarks: remarks || null,
       },
     }),
     ...(existing.stockLotId
@@ -69,7 +69,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
             pieces: pieces ? parseInt(pieces) : null,
             quantity: newQty,
             length: length ? parseFloat(length) : null,
-            description, uidNo: uidNo || null, remarks: remarks || null,
+            description, uidNo: uidNo || null, subLoc: subLoc || null, remarks: remarks || null,
             dateCreated: new Date(date),
           },
         })]

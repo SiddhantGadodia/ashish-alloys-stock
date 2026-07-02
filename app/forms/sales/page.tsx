@@ -24,7 +24,7 @@ interface Entry {
 
 interface LotSelection { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
 
-const emptyInstr = { date: "", grade: "", size: "", quantity: "", make: "", uidNo: "", pieces: "", supplyCondition: "", customer: "", vehicleNo: "", remarks: "" };
+const emptyInstr = { date: "", grade: "", size: "", quantity: "", make: "", uidNo: "", pieces: "", subLoc: "", supplyCondition: "", customer: "", vehicleNo: "", remarks: "" };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   instruction: { label: "Instruction Issued", color: "bg-gray-100 text-gray-600" },
@@ -141,6 +141,7 @@ export default function SalesPage() {
                 <Field label="Vehicle No."><input type="text" value={instrForm.vehicleNo} onChange={(e) => setI("vehicleNo", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Pieces"><input type="number" value={instrForm.pieces} onChange={(e) => setI("pieces", e.target.value)} className={inputCls()} /></Field>
                 <Field label="UID No."><input type="text" value={instrForm.uidNo} onChange={(e) => setI("uidNo", e.target.value)} className={inputCls()} /></Field>
+                <Field label="Sub Loc"><input type="text" value={instrForm.subLoc} onChange={(e) => setI("subLoc", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Remarks"><input type="text" value={instrForm.remarks} onChange={(e) => setI("remarks", e.target.value)} className={inputCls()} /></Field>
               </div>
               {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -167,6 +168,7 @@ export default function SalesPage() {
                 <Field label="Vehicle No."><input type="text" value={actForm.vehicleNo} onChange={(e) => setA("vehicleNo", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Pieces"><input type="number" value={actForm.pieces} onChange={(e) => setA("pieces", e.target.value)} className={inputCls()} /></Field>
                 <Field label="UID No."><input type="text" value={actForm.uidNo} onChange={(e) => setA("uidNo", e.target.value)} className={inputCls()} /></Field>
+                <Field label="Sub Loc"><input type="text" value={actForm.subLoc} onChange={(e) => setA("subLoc", e.target.value)} className={inputCls()} /></Field>
                 <Field label="Remarks"><input type="text" value={actForm.remarks} onChange={(e) => setA("remarks", e.target.value)} className={inputCls()} /></Field>
               </div>
               <div>

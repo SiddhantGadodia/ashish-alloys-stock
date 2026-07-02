@@ -30,7 +30,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (existing.status !== "instruction") {
       return NextResponse.json({ error: "Can only fill actuals on instruction stage" }, { status: 409 });
     }
-    const { date, grade, size, quantity, make, uidNo, pieces, supplyCondition, locationFrom, locationTo, remarks, description, lotSelections } = body;
+    const { date, grade, size, quantity, make, uidNo, pieces, subLoc, supplyCondition, locationFrom, locationTo, remarks, description, lotSelections } = body;
     if (!date || !grade || !size || !quantity || !make || !supplyCondition || !locationFrom || !locationTo || !lotSelections?.length) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -53,6 +53,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         actDate: new Date(date), actGrade: grade, actSize: size,
         actQuantity: totalQty, actMake: make,
         actUidNo: uidNo || null, actPieces: pieces ? parseInt(pieces) : null,
+        actSubLoc: subLoc || null,
         actSupplyCondition: supplyCondition, actLocationFrom: locationFrom,
         actLocationTo: locationTo, actRemarks: remarks || null,
         actDescription: description || null,
@@ -89,7 +90,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           supplyCondition: existing.actSupplyCondition!, make: existing.actMake!,
           location: existing.actLocationTo!, quantity: existing.actQuantity!,
           pieces: existing.actPieces, description: existing.actDescription || "Prime",
-          uidNo: existing.actUidNo, dateCreated: existing.actDate!,
+          uidNo: existing.actUidNo, subLoc: existing.actSubLoc || null, dateCreated: existing.actDate!,
           originForm: "internal_transfer", originId: params.id,
         },
       });

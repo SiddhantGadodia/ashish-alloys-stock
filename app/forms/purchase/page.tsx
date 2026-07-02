@@ -39,7 +39,7 @@ interface ImportRow {
   _error?: string;
 }
 
-const empty = { date: "", grade: "", size: "", supplyCondition: "", pieces: "", make: "", quantity: "", length: "", description: "", location: "", uidNo: "", remarks: "" };
+const empty = { date: "", grade: "", size: "", supplyCondition: "", pieces: "", make: "", quantity: "", length: "", description: "", location: "", uidNo: "", subLoc: "", remarks: "" };
 
 // Normalise Excel header names to our field keys
 function normaliseHeader(h: string): string {
@@ -131,7 +131,7 @@ export default function PurchasePage() {
       grade: e.grade, size: e.size, supplyCondition: e.supplyCondition,
       pieces: e.pieces?.toString() || "", make: e.make, quantity: e.quantity.toString(),
       length: "", description: e.description, location: e.location,
-      uidNo: e.uidNo || "", remarks: e.remarks || "",
+      uidNo: e.uidNo || "", subLoc: (e as { subLoc?: string | null }).subLoc || "", remarks: e.remarks || "",
     });
     setEditId(e.id); setShowForm(true); setError("");
   }
@@ -341,6 +341,9 @@ export default function PurchasePage() {
                 <Field label="UID No.">
                   <input type="text" value={form.uidNo} onChange={(e) => set("uidNo", e.target.value)} className={inputCls()} />
                 </Field>
+                <Field label="Sub Loc">
+                  <input type="text" value={form.subLoc} onChange={(e) => set("subLoc", e.target.value)} className={inputCls()} />
+                </Field>
                 <Field label="Remarks">
                   <input type="text" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} className={inputCls()} />
                 </Field>
@@ -370,6 +373,7 @@ export default function PurchasePage() {
                 <th className="px-4 py-3 font-medium text-gray-600">Description</th>
                 <th className="px-4 py-3 font-medium text-gray-600">UID No.</th>
                 <th className="px-4 py-3 font-medium text-gray-600 text-right">Pieces</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Sub Loc</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Remarks</th>
                 {isVerifier && <th className="px-4 py-3 font-medium text-gray-600">Created By</th>}
                 <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
@@ -377,7 +381,7 @@ export default function PurchasePage() {
             </thead>
             <tbody>
               {entries.length === 0 && (
-                <tr><td colSpan={isVerifier ? 13 : 12} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
+                <tr><td colSpan={isVerifier ? 14 : 13} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
               )}
               {entries.map((e) => (
                 <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
@@ -395,6 +399,7 @@ export default function PurchasePage() {
                   </td>
                   <td className="px-4 py-3 text-gray-500">{e.uidNo ?? "—"}</td>
                   <td className="px-4 py-3 text-right">{e.pieces ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-500">{(e as { subLoc?: string | null }).subLoc ?? "—"}</td>
                   <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate">{e.remarks ?? "—"}</td>
                   {isVerifier && <td className="px-4 py-3 text-gray-500">{e.createdBy?.name || "—"}</td>}
                   <td className="px-4 py-3 flex gap-2">

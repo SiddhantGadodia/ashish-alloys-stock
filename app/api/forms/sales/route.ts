@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const { stage } = body;
 
   if (stage === "instruction") {
-    const { date, grade, size, quantity, make, uidNo, pieces, supplyCondition, customer, vehicleNo, remarks } = body;
+    const { date, grade, size, quantity, make, uidNo, pieces, subLoc, supplyCondition, customer, vehicleNo, remarks } = body;
     if (!date || !grade || !size || !quantity || !make || !supplyCondition || !customer) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
         instrDate: new Date(date), instrGrade: grade, instrSize: size,
         instrQuantity: parseFloat(quantity), instrMake: make,
         instrUidNo: uidNo || null, instrPieces: pieces ? parseInt(pieces) : null,
+        instrSubLoc: subLoc || null,
         instrSupplyCondition: supplyCondition, instrCustomer: customer,
         instrVehicleNo: vehicleNo || null, instrRemarks: remarks || null,
         instructedById: user.id, instructedAt: new Date(),

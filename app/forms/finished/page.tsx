@@ -28,7 +28,7 @@ interface Entry {
 
 interface LotInfo { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
 
-const emptyForm = { date: "", quantityFinal: "", locationFinal: "", suspenseQty: "0", pieces: "", uidNo: "", remarks: "" };
+const emptyForm = { date: "", quantityFinal: "", locationFinal: "", suspenseQty: "0", pieces: "", uidNo: "", subLocInitial: "", subLocFinal: "", remarks: "" };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   actuals_filled: { label: "Actuals Filled", color: "bg-amber-100 text-amber-700" },
@@ -214,6 +214,8 @@ export default function FinishedPage() {
                     <Field label="Suspense Qty"><input type="number" step="0.001" min="0" value={form.suspenseQty} onChange={(e) => set("suspenseQty", e.target.value)} className={inputCls()} /></Field>
                     <Field label="Pieces"><input type="number" value={form.pieces} onChange={(e) => set("pieces", e.target.value)} className={inputCls()} /></Field>
                     <Field label="UID No."><input type="text" value={form.uidNo} onChange={(e) => set("uidNo", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Sub Loc (Initial)"><input type="text" value={form.subLocInitial} onChange={(e) => set("subLocInitial", e.target.value)} className={inputCls()} /></Field>
+                    <Field label="Sub Loc (Final)"><input type="text" value={form.subLocFinal} onChange={(e) => set("subLocFinal", e.target.value)} className={inputCls()} /></Field>
                     <Field label="Remarks"><input type="text" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} className={inputCls()} /></Field>
                   </div>
                   {error && <p className="text-red-500 text-sm">{error}</p>}

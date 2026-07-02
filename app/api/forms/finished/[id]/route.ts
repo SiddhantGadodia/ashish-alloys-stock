@@ -43,7 +43,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           supplyCondition: existing.supplyCondition, make: existing.make,
           location: existing.locationFinal, quantity: existing.quantityFinal,
           pieces: existing.pieces, description: "Prime",
-          uidNo: existing.uidNo, dateCreated: existing.date,
+          uidNo: existing.uidNo, subLoc: (existing as { subLocFinal?: string | null }).subLocFinal || null, dateCreated: existing.date,
           originForm: "finished_goods", originId: params.id,
         },
       });

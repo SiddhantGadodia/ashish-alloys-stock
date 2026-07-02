@@ -50,6 +50,7 @@ model StockLot {
   length          Float?
   description     String
   uidNo           String?
+  subLoc          String?
   remarks         String?
   dateCreated     DateTime
   originForm      String   // "purchase"|"internal_transfer"|"finished_goods"
@@ -94,6 +95,7 @@ model PurchaseEntry {
   description     String
   location        String
   uidNo           String?
+  subLoc          String?
   remarks         String?
   stockLotId      String?
   createdById     String
@@ -114,6 +116,7 @@ model InternalTransfer {
   instrMake            String?
   instrUidNo           String?
   instrPieces          Int?
+  instrSubLoc          String?
   instrSupplyCondition String?
   instrLocationFrom    String?
   instrLocationTo      String?
@@ -130,6 +133,7 @@ model InternalTransfer {
   actMake            String?
   actUidNo           String?
   actPieces          Int?
+  actSubLoc          String?
   actSupplyCondition String?
   actLocationFrom    String?
   actLocationTo      String?
@@ -182,6 +186,8 @@ model FinishedGoodsTransfer {
   make            String
   uidNo           String?
   pieces          Int?
+  subLocInitial   String?
+  subLocFinal     String?
   supplyCondition String
   locationInitial String
   locationFinal   String
@@ -214,6 +220,7 @@ model Sale {
   instrMake            String?
   instrUidNo           String?
   instrPieces          Int?
+  instrSubLoc          String?
   instrSupplyCondition String?
   instrCustomer        String?
   instrVehicleNo       String?
@@ -229,6 +236,7 @@ model Sale {
   actMake            String?
   actUidNo           String?
   actPieces          Int?
+  actSubLoc          String?
   actSupplyCondition String?
   actCustomer        String?
   actVehicleNo       String?

@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const user = session!.user as { id: string };
   const body = await req.json();
 
-  const { date, grade, size, supplyCondition, pieces, make, quantity, length, description, location, uidNo, remarks } = body;
+  const { date, grade, size, supplyCondition, pieces, make, quantity, length, description, location, uidNo, subLoc, remarks } = body;
 
   if (!date || !grade || !size || !supplyCondition || !make || !quantity || !description || !location) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
         length: length ? parseFloat(length) : null,
         description, location,
         uidNo: uidNo || null,
+        subLoc: subLoc || null,
         remarks: remarks || null,
         createdById: user.id,
       },
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
         length: length ? parseFloat(length) : null,
         description,
         uidNo: uidNo || null,
+        subLoc: subLoc || null,
         remarks: remarks || null,
         dateCreated: new Date(date),
         originForm: "purchase",

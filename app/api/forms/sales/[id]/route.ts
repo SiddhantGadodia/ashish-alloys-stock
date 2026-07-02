@@ -30,7 +30,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (existing.status !== "instruction") {
       return NextResponse.json({ error: "Can only fill actuals on instruction stage" }, { status: 409 });
     }
-    const { date, grade, size, quantity, make, uidNo, pieces, supplyCondition, customer, vehicleNo, remarks, lotSelections } = body;
+    const { date, grade, size, quantity, make, uidNo, pieces, subLoc, supplyCondition, customer, vehicleNo, remarks, lotSelections } = body;
     if (!date || !grade || !size || !quantity || !make || !supplyCondition || !customer || !lotSelections?.length) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -52,6 +52,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         actDate: new Date(date), actGrade: grade, actSize: size,
         actQuantity: totalQty, actMake: make,
         actUidNo: uidNo || null, actPieces: pieces ? parseInt(pieces) : null,
+        actSubLoc: subLoc || null,
         actSupplyCondition: supplyCondition, actCustomer: customer,
         actVehicleNo: vehicleNo || null, actRemarks: remarks || null,
         lotSelections: JSON.stringify(lotSelections),
