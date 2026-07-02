@@ -152,18 +152,21 @@ export default function PurchasePage() {
                 <th className="px-4 py-3 font-medium text-gray-600">Date</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Grade</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Size</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Condition</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Make</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Location</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Supply Condition</th>
                 <th className="px-4 py-3 font-medium text-gray-600 text-right">Qty</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Location</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Make</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Description</th>
+                <th className="px-4 py-3 font-medium text-gray-600">UID No.</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Pieces</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Remarks</th>
                 {isVerifier && <th className="px-4 py-3 font-medium text-gray-600">Created By</th>}
                 <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>
               {entries.length === 0 && (
-                <tr><td colSpan={isVerifier ? 10 : 9} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
+                <tr><td colSpan={isVerifier ? 13 : 12} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
               )}
               {entries.map((e) => (
                 <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
@@ -171,14 +174,17 @@ export default function PurchasePage() {
                   <td className="px-4 py-3 font-medium">{e.grade}</td>
                   <td className="px-4 py-3">{e.size}</td>
                   <td className="px-4 py-3">{e.supplyCondition}</td>
-                  <td className="px-4 py-3">{e.make}</td>
-                  <td className="px-4 py-3">{e.location}</td>
                   <td className="px-4 py-3 text-right font-semibold">{e.quantity.toFixed(3)}</td>
+                  <td className="px-4 py-3">{e.location}</td>
+                  <td className="px-4 py-3">{e.make}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.description === "Prime" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.description === "Prime" || e.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
                       {e.description}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-gray-500">{e.uidNo ?? "—"}</td>
+                  <td className="px-4 py-3 text-right">{e.pieces ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate">{e.remarks ?? "—"}</td>
                   {isVerifier && <td className="px-4 py-3 text-gray-500">{e.createdBy?.name || "—"}</td>}
                   <td className="px-4 py-3 flex gap-2">
                     <button onClick={() => startEdit(e)} className="text-blue-600 hover:underline text-xs">Edit</button>
