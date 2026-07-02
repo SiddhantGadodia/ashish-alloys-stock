@@ -54,6 +54,55 @@ function applyFilters(lots: StockLot[], colFilters: Record<ColKey, Set<string>>)
   );
 }
 
+function DateFilter({ from, to, onChange }: {
+  from: string; to: string; onChange: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = !!from || !!to;
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1 font-medium whitespace-nowrap ${active ? "text-blue-700" : "text-gray-600"}`}
+      >
+        Date
+        <span className={`text-[10px] ${active ? "text-blue-500" : "text-gray-400"}`}>▼</span>
+        {active && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block ml-0.5" />}
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl w-56 p-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date Range</p>
+          <div>
+            <label className="text-xs text-gray-500 mb-0.5 block">From</label>
+            <input type="date" value={from} onChange={(e) => onChange(e.target.value, to)}
+              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-0.5 block">To</label>
+            <input type="date" value={to} onChange={(e) => onChange(from, e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {active && (
+            <button onClick={() => onChange("", "")} className="text-xs text-red-500 hover:underline w-full text-left pt-1">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ColumnFilter({ label, values, selected, onChange }: {
   label: string; values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void;
 }) {
@@ -89,7 +138,7 @@ function ColumnFilter({ label, values, selected, onChange }: {
         {active && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block ml-0.5" />}
       </button>
       {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[160px] max-h-64 overflow-y-auto">
+        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl w-56 max-h-64 overflow-y-auto">
           <label className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 sticky top-0 bg-white">
             <input
               type="checkbox"
@@ -124,6 +173,8 @@ export default function StockPage() {
     grade: new Set(), size: new Set(), supplyCondition: new Set(), make: new Set(), location: new Set(), description: new Set(),
   });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -155,8 +206,15 @@ export default function StockPage() {
     return distinct(filteredExcept(lots, colFilters, key), key);
   }
 
-  const filtered = applyFilters(lots, colFilters);
-  const byForm = (form: string) => applyFilters(lots.filter((l) => l.originForm === form), colFilters);
+  function applyDateFilter(l: StockLot) {
+    const d = new Date(l.dateCreated);
+    if (dateFrom && d < new Date(dateFrom)) return false;
+    if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
+    return true;
+  }
+
+  const filtered = applyFilters(lots, colFilters).filter(applyDateFilter);
+  const byForm = (form: string) => applyFilters(lots.filter((l) => l.originForm === form), colFilters).filter(applyDateFilter);
 
   const BY_FORM_SECTIONS = [
     { key: "purchase", label: "Purchase Entries" },
@@ -180,7 +238,7 @@ export default function StockPage() {
         </div>
 
         {tab === "All Lots" && (
-          <LotTable lots={filtered} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} />
+          <LotTable lots={filtered} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         )}
 
         {tab === "By Form" && (
@@ -202,7 +260,7 @@ export default function StockPage() {
                   </button>
                   {open && (
                     <div className="border-t border-gray-100">
-                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} />
+                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
                     </div>
                   )}
                 </div>
@@ -254,11 +312,13 @@ const COL_COLORS: Record<ColKey, { th: string; td: string }> = {
   description:     { th: "bg-amber-100",  td: "bg-amber-50" },
 };
 
-function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
+function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFrom, dateTo, onDateChange }: {
   lots: StockLot[]; loading: boolean;
   colFilters: Record<ColKey, Set<string>>;
   cascadeValues: (k: ColKey) => string[];
   setFilter: (k: ColKey, s: Set<string>) => void;
+  dateFrom: string; dateTo: string;
+  onDateChange: (f: string, t: string) => void;
 }) {
   if (loading) return <p className="text-center text-gray-400 py-10 text-sm">Loading...</p>;
 
@@ -280,7 +340,7 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
       <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-gray-50 text-left">
           <tr>
-            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Date</th>
+            <th className={`px-3 py-3 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-100" : ""}`}><DateFilter from={dateFrom} to={dateTo} onChange={onDateChange} /></th>
             <th className={thCls("grade")}><ColumnFilter label={COL_LABELS["grade"]} values={cascadeValues("grade")} selected={colFilters["grade"]} onChange={(s) => setFilter("grade", s)} /></th>
             <th className={thCls("size")}><ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} /></th>
             <th className={thCls("supplyCondition")}><ColumnFilter label={COL_LABELS["supplyCondition"]} values={cascadeValues("supplyCondition")} selected={colFilters["supplyCondition"]} onChange={(s) => setFilter("supplyCondition", s)} /></th>
@@ -301,7 +361,7 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
           )}
           {lots.map((lot) => (
             <tr key={lot.id} className="border-t border-gray-100 hover:brightness-95">
-              <td className="px-3 py-2 whitespace-nowrap">{new Date(lot.dateCreated).toLocaleDateString("en-IN")}</td>
+              <td className={`px-3 py-2 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-50" : ""}`}>{new Date(lot.dateCreated).toLocaleDateString("en-IN")}</td>
               <td className={tdCls("grade", "font-medium")}>{lot.grade}</td>
               <td className={tdCls("size")}>{lot.size}</td>
               <td className={tdCls("supplyCondition")}>{lot.supplyCondition}</td>
