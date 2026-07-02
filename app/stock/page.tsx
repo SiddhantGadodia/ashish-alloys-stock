@@ -257,15 +257,16 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
         <thead className="bg-gray-50 text-left">
           <tr>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Date</th>
-            {COL_KEYS.map((k) => (
-              <th key={k} className="px-3 py-3 whitespace-nowrap">
-                <ColumnFilter label={COL_LABELS[k]} values={cascadeValues(k)} selected={colFilters[k]} onChange={(s) => setFilter(k, s)} />
-              </th>
-            ))}
-            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["grade"]} values={cascadeValues("grade")} selected={colFilters["grade"]} onChange={(s) => setFilter("grade", s)} /></th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} /></th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["supplyCondition"]} values={cascadeValues("supplyCondition")} selected={colFilters["supplyCondition"]} onChange={(s) => setFilter("supplyCondition", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
-            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["location"]} values={cascadeValues("location")} selected={colFilters["location"]} onChange={(s) => setFilter("location", s)} /></th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["make"]} values={cascadeValues("make")} selected={colFilters["make"]} onChange={(s) => setFilter("make", s)} /></th>
+            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["description"]} values={cascadeValues("description")} selected={colFilters["description"]} onChange={(s) => setFilter("description", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
+            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
+            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
           </tr>
         </thead>
@@ -279,17 +280,17 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
               <td className="px-3 py-2 font-medium">{lot.grade}</td>
               <td className="px-3 py-2">{lot.size}</td>
               <td className="px-3 py-2">{lot.supplyCondition}</td>
-              <td className="px-3 py-2">{lot.make}</td>
+              <td className="px-3 py-2 text-right font-semibold">{lot.quantity.toFixed(3)}</td>
               <td className="px-3 py-2">{lot.location}</td>
+              <td className="px-3 py-2">{lot.make}</td>
               <td className="px-3 py-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lot.description === "Prime" || lot.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
                   {lot.description}
                 </span>
               </td>
-              <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
-              <td className="px-3 py-2 text-right font-semibold">{lot.quantity.toFixed(3)}</td>
-              <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
               <td className="px-3 py-2">{lot.uidNo ?? "—"}</td>
+              <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
+              <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
               <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
             </tr>
           ))}
