@@ -244,6 +244,16 @@ export default function StockPage() {
   );
 }
 
+// One distinct colour per filterable column
+const COL_COLORS: Record<ColKey, { th: string; td: string }> = {
+  grade:           { th: "bg-blue-100",   td: "bg-blue-50" },
+  size:            { th: "bg-purple-100", td: "bg-purple-50" },
+  supplyCondition: { th: "bg-emerald-100",td: "bg-emerald-50" },
+  location:        { th: "bg-rose-100",   td: "bg-rose-50" },
+  make:            { th: "bg-orange-100", td: "bg-orange-50" },
+  description:     { th: "bg-amber-100",  td: "bg-amber-50" },
+};
+
 function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
   lots: StockLot[]; loading: boolean;
   colFilters: Record<ColKey, Set<string>>;
@@ -251,19 +261,33 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
   setFilter: (k: ColKey, s: Set<string>) => void;
 }) {
   if (loading) return <p className="text-center text-gray-400 py-10 text-sm">Loading...</p>;
+
+  // A column is "active" when its filter excludes at least one value
+  function isActive(k: ColKey) {
+    const vals = cascadeValues(k);
+    return vals.length > 0 && !vals.every((v) => colFilters[k].has(v));
+  }
+
+  function thCls(k: ColKey) {
+    return `px-3 py-3 whitespace-nowrap transition-colors ${isActive(k) ? COL_COLORS[k].th : ""}`;
+  }
+  function tdCls(k: ColKey, extra = "") {
+    return `px-3 py-2 transition-colors ${isActive(k) ? COL_COLORS[k].td : ""} ${extra}`.trim();
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
       <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-gray-50 text-left">
           <tr>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Date</th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["grade"]} values={cascadeValues("grade")} selected={colFilters["grade"]} onChange={(s) => setFilter("grade", s)} /></th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} /></th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["supplyCondition"]} values={cascadeValues("supplyCondition")} selected={colFilters["supplyCondition"]} onChange={(s) => setFilter("supplyCondition", s)} /></th>
+            <th className={thCls("grade")}><ColumnFilter label={COL_LABELS["grade"]} values={cascadeValues("grade")} selected={colFilters["grade"]} onChange={(s) => setFilter("grade", s)} /></th>
+            <th className={thCls("size")}><ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} /></th>
+            <th className={thCls("supplyCondition")}><ColumnFilter label={COL_LABELS["supplyCondition"]} values={cascadeValues("supplyCondition")} selected={colFilters["supplyCondition"]} onChange={(s) => setFilter("supplyCondition", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["location"]} values={cascadeValues("location")} selected={colFilters["location"]} onChange={(s) => setFilter("location", s)} /></th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["make"]} values={cascadeValues("make")} selected={colFilters["make"]} onChange={(s) => setFilter("make", s)} /></th>
-            <th className="px-3 py-3 whitespace-nowrap"><ColumnFilter label={COL_LABELS["description"]} values={cascadeValues("description")} selected={colFilters["description"]} onChange={(s) => setFilter("description", s)} /></th>
+            <th className={thCls("location")}><ColumnFilter label={COL_LABELS["location"]} values={cascadeValues("location")} selected={colFilters["location"]} onChange={(s) => setFilter("location", s)} /></th>
+            <th className={thCls("make")}><ColumnFilter label={COL_LABELS["make"]} values={cascadeValues("make")} selected={colFilters["make"]} onChange={(s) => setFilter("make", s)} /></th>
+            <th className={thCls("description")}><ColumnFilter label={COL_LABELS["description"]} values={cascadeValues("description")} selected={colFilters["description"]} onChange={(s) => setFilter("description", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
@@ -276,15 +300,15 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter }: {
             <tr><td colSpan={14} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
-            <tr key={lot.id} className="border-t border-gray-100 hover:bg-gray-50">
+            <tr key={lot.id} className="border-t border-gray-100 hover:brightness-95">
               <td className="px-3 py-2 whitespace-nowrap">{new Date(lot.dateCreated).toLocaleDateString("en-IN")}</td>
-              <td className="px-3 py-2 font-medium">{lot.grade}</td>
-              <td className="px-3 py-2">{lot.size}</td>
-              <td className="px-3 py-2">{lot.supplyCondition}</td>
+              <td className={tdCls("grade", "font-medium")}>{lot.grade}</td>
+              <td className={tdCls("size")}>{lot.size}</td>
+              <td className={tdCls("supplyCondition")}>{lot.supplyCondition}</td>
               <td className="px-3 py-2 text-right font-semibold">{lot.quantity.toFixed(3)}</td>
-              <td className="px-3 py-2">{lot.location}</td>
-              <td className="px-3 py-2">{lot.make}</td>
-              <td className="px-3 py-2">
+              <td className={tdCls("location")}>{lot.location}</td>
+              <td className={tdCls("make")}>{lot.make}</td>
+              <td className={tdCls("description")}>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lot.description === "Prime" || lot.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
                   {lot.description}
                 </span>
