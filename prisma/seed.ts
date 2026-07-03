@@ -5,25 +5,22 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Users
-  const verifierPassword = await bcrypt.hash("ashish123", 10);
-  const darpanPassword = await bcrypt.hash("darpan123", 10);
-  const staffPassword = await bcrypt.hash("staff123", 10);
-
-  await prisma.user.upsert({
-    where: { name: "Ashish" },
-    update: {},
-    create: { name: "Ashish", password: verifierPassword, role: "verifier" },
-  });
-  await prisma.user.upsert({
-    where: { name: "Darpan" },
-    update: {},
-    create: { name: "Darpan", password: darpanPassword, role: "verifier" },
-  });
-  await prisma.user.upsert({
-    where: { name: "Staff1" },
-    update: {},
-    create: { name: "Staff1", password: staffPassword, role: "staff" },
-  });
+  const users: { name: string; password: string; role: string }[] = [
+    { name: "Ashish",  password: await bcrypt.hash("ashish123",  10), role: "verifier" },
+    { name: "Darpan",  password: await bcrypt.hash("darpan456",  10), role: "verifier" },
+    { name: "Archana", password: await bcrypt.hash("archana789", 10), role: "staff" },
+    { name: "Supriya", password: await bcrypt.hash("supriya147", 10), role: "staff" },
+    { name: "Pradnya", password: await bcrypt.hash("pradnya258", 10), role: "staff" },
+  ];
+  for (const u of users) {
+    await prisma.user.upsert({
+      where: { name: u.name },
+      update: { password: u.password, role: u.role },
+      create: { name: u.name, password: u.password, role: u.role },
+    });
+  }
+  // Remove old Staff1 account if it exists
+  await prisma.user.deleteMany({ where: { name: "Staff1" } });
 
   // Grade options
   const grades = [
