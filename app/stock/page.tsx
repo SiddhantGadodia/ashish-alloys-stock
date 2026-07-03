@@ -452,9 +452,9 @@ export default function StockPage() {
   const byForm = (form: string) => applySort(applyFilters(lots.filter((l) => l.originForm === form), colFilters).filter(applyDateFilter));
 
   const BY_FORM_SECTIONS = [
-    { key: "purchase", label: "Purchase Entries" },
-    { key: "internal_transfer", label: "Internal Transfers" },
-    { key: "finished_goods", label: "Finished Goods" },
+    { key: "purchase", label: "Purchase Entries", prefix: "P" },
+    { key: "internal_transfer", label: "Internal Transfers", prefix: "I" },
+    { key: "finished_goods", label: "Finished Goods", prefix: "F" },
   ];
 
   return (
@@ -478,7 +478,7 @@ export default function StockPage() {
 
         {tab === "By Form" && (
           <div className="space-y-4">
-            {BY_FORM_SECTIONS.map(({ key, label }) => {
+            {BY_FORM_SECTIONS.map(({ key, label, prefix }) => {
               const sectionLots = byForm(key);
               const open = !!openSections[key];
               return (
@@ -495,7 +495,7 @@ export default function StockPage() {
                   </button>
                   {open && (
                     <div className="border-t border-gray-100">
-                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} formPrefix={prefix} />
                     </div>
                   )}
                 </div>
@@ -704,7 +704,37 @@ const COL_COLORS: Record<ColKey, { th: string; td: string }> = {
   subLoc:          { th: "bg-teal-100",   td: "bg-teal-50" },
 };
 
-function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFrom, dateTo, onDateChange, sortBy, sortDir, onSort }: {
+function LotRow({ lot, formPrefix, activeKeys, dateActive }: { lot: StockLot; formPrefix?: string; activeKeys: Set<ColKey>; dateActive: boolean }) {
+  const formTag = formPrefix ? (lot.lineage?.split(", ").find((t) => t.startsWith(formPrefix)) ?? "—") : null;
+  function td(k: ColKey, extra = "") { return `px-3 py-2 transition-colors ${activeKeys.has(k) ? COL_COLORS[k].td : ""} ${extra}`.trim(); }
+  const lineageTags = lot.lineage
+    ? lot.lineage.split(", ").map((tag) => <span key={tag} className="inline-block mr-1 mb-0.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{tag}</span>)
+    : "—";
+  return (
+    <tr className="border-t border-gray-100 hover:brightness-95">
+      {formPrefix && <td className="px-3 py-2 font-bold text-slate-700 whitespace-nowrap">{formTag}</td>}
+      <td className={`px-3 py-2 whitespace-nowrap ${dateActive ? "bg-sky-50" : ""}`}>{new Date(lot.dateCreated).toLocaleDateString("en-IN")}</td>
+      <td className={td("grade", "font-medium")}>{lot.grade}</td>
+      <td className={td("size")}>{lot.size}</td>
+      <td className={td("supplyCondition")}>{lot.supplyCondition}</td>
+      <td className="px-3 py-2 text-right font-semibold">{lot.quantity.toFixed(3)}</td>
+      <td className={td("location")}>{lot.location}</td>
+      <td className={td("make")}>{lot.make}</td>
+      <td className={td("description")}>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lot.description === "Prime" || lot.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>{lot.description}</span>
+      </td>
+      <td className="px-3 py-2">{lot.uidNo ?? "—"}</td>
+      <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
+      <td className={td("subLoc")}>{(lot as StockLot & { subLoc?: string | null }).subLoc ?? "—"}</td>
+      <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
+      <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
+      <td className="px-3 py-2 font-medium text-indigo-700">{lot.jwNo ?? "—"}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{lineageTags}</td>
+    </tr>
+  );
+}
+
+function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFrom, dateTo, onDateChange, sortBy, sortDir, onSort, formPrefix }: {
   lots: StockLot[]; loading: boolean;
   colFilters: Record<ColKey, Set<string>>;
   cascadeValues: (k: ColKey) => string[];
@@ -714,6 +744,7 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
   sortBy: "date" | "size" | null;
   sortDir: "asc" | "desc";
   onSort: (k: "date" | "size") => void;
+  formPrefix?: string;
 }) {
   if (loading) return <p className="text-center text-gray-400 py-10 text-sm">Loading...</p>;
 
@@ -723,11 +754,9 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
     return vals.length > 0 && !vals.every((v) => colFilters[k].has(v));
   }
 
+  const activeKeys = new Set(COL_KEYS.filter(isActive));
   function thCls(k: ColKey) {
     return `px-3 py-3 whitespace-nowrap transition-colors ${isActive(k) ? COL_COLORS[k].th : ""}`;
-  }
-  function tdCls(k: ColKey, extra = "") {
-    return `px-3 py-2 transition-colors ${isActive(k) ? COL_COLORS[k].td : ""} ${extra}`.trim();
   }
 
   return (
@@ -735,6 +764,7 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
       <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-gray-50 text-left">
           <tr>
+            {formPrefix && <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Form No.</th>}
             <th className={`px-3 py-3 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-100" : ""}`}>
               <div className="flex items-center gap-1">
                 <DateFilter from={dateFrom} to={dateTo} onChange={onDateChange} />
@@ -764,34 +794,10 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
         </thead>
         <tbody>
           {lots.length === 0 && (
-            <tr><td colSpan={16} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
+            <tr><td colSpan={formPrefix ? 17 : 16} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
-            <tr key={lot.id} className="border-t border-gray-100 hover:brightness-95">
-              <td className={`px-3 py-2 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-50" : ""}`}>{new Date(lot.dateCreated).toLocaleDateString("en-IN")}</td>
-              <td className={tdCls("grade", "font-medium")}>{lot.grade}</td>
-              <td className={tdCls("size")}>{lot.size}</td>
-              <td className={tdCls("supplyCondition")}>{lot.supplyCondition}</td>
-              <td className="px-3 py-2 text-right font-semibold">{lot.quantity.toFixed(3)}</td>
-              <td className={tdCls("location")}>{lot.location}</td>
-              <td className={tdCls("make")}>{lot.make}</td>
-              <td className={tdCls("description")}>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lot.description === "Prime" || lot.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
-                  {lot.description}
-                </span>
-              </td>
-              <td className="px-3 py-2">{lot.uidNo ?? "—"}</td>
-              <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
-              <td className={tdCls("subLoc")}>{(lot as { subLoc?: string | null }).subLoc ?? "—"}</td>
-              <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
-              <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
-              <td className="px-3 py-2 font-medium text-indigo-700">{lot.jwNo ?? "—"}</td>
-              <td className="px-3 py-2 whitespace-nowrap">
-                {lot.lineage ? lot.lineage.split(", ").map((tag) => (
-                  <span key={tag} className="inline-block mr-1 mb-0.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{tag}</span>
-                )) : "—"}
-              </td>
-            </tr>
+            <LotRow key={lot.id} lot={lot} formPrefix={formPrefix} activeKeys={activeKeys} dateActive={!!(dateFrom || dateTo)} />
           ))}
         </tbody>
       </table>
