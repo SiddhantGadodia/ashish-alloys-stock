@@ -18,6 +18,7 @@ interface StockLot {
   uidNo: string | null;
   jwNo: string | null;
   remarks: string | null;
+  lineage: string | null;
   dateCreated: string;
   originForm: string;
 }
@@ -758,11 +759,12 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">JW No.</th>
+            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">History</th>
           </tr>
         </thead>
         <tbody>
           {lots.length === 0 && (
-            <tr><td colSpan={15} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
+            <tr><td colSpan={16} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
             <tr key={lot.id} className="border-t border-gray-100 hover:brightness-95">
@@ -784,6 +786,11 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
               <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
               <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
               <td className="px-3 py-2 font-medium text-indigo-700">{lot.jwNo ?? "—"}</td>
+              <td className="px-3 py-2 whitespace-nowrap">
+                {lot.lineage ? lot.lineage.split(", ").map((tag) => (
+                  <span key={tag} className="inline-block mr-1 mb-0.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{tag}</span>
+                )) : "—"}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -59,9 +59,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       for (const l of lots) {
         const srcLot = await tx.stockLot.findUnique({ where: { id: l.lotId } });
         const remaining = (srcLot?.quantity ?? 0) - l.detail.qty;
+        const newLineage = [srcLot?.lineage, `S${existing.formNo}`].filter(Boolean).join(", ");
         await tx.stockLot.update({
           where: { id: l.lotId },
-          data: { quantity: { decrement: l.detail.qty }, ...(remaining <= 0.001 ? { active: false } : {}) },
+          data: { quantity: { decrement: l.detail.qty }, lineage: newLineage, ...(remaining <= 0.001 ? { active: false } : {}) },
         });
       }
       await tx.sale.update({

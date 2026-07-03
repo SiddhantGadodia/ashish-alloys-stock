@@ -79,6 +79,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
             pieces: l.detail.pieces ?? null,
             location: l.detail.locationTo,
             quantity: l.detail.qty,
+            lineage: [srcLot?.lineage, `I${existing.formNo}`].filter(Boolean).join(", "),
             dateCreated: new Date(l.detail.date),
             originForm: "internal_transfer",
             originId: params.id,

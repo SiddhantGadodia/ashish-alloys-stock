@@ -52,9 +52,16 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         return NextResponse.json({ error: `Lot ${lot.grade} ${lot.size} has insufficient quantity` }, { status: 409 });
       }
     }
-    await prisma.productionPlanning.update({
-      where: { id: params.id },
-      data: { status: "verified", verifiedById: user.id, verifiedAt: new Date() },
+    await prisma.$transaction(async (tx) => {
+      for (const ls of lots) {
+        const srcLot = await tx.stockLot.findUnique({ where: { id: ls.lotId } });
+        const newLineage = [srcLot?.lineage, `R${existing.formNo}`].filter(Boolean).join(", ");
+        await tx.stockLot.update({ where: { id: ls.lotId }, data: { lineage: newLineage } });
+      }
+      await tx.productionPlanning.update({
+        where: { id: params.id },
+        data: { status: "verified", verifiedById: user.id, verifiedAt: new Date() },
+      });
     });
     return NextResponse.json({ ok: true });
   }

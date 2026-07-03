@@ -145,3 +145,11 @@ VALUES
   (gen_random_uuid()::text, 'machine', 'M8', true, true),
   (gen_random_uuid()::text, 'machine', 'M9', true, true)
 ON CONFLICT (field, value) DO NOTHING;
+
+-- 8. Form numbering (formNo) + StockLot lineage
+ALTER TABLE "PurchaseEntry"         ADD COLUMN IF NOT EXISTS "formNo" SERIAL;
+ALTER TABLE "InternalTransfer"      ADD COLUMN IF NOT EXISTS "formNo" SERIAL;
+ALTER TABLE "ProductionPlanning"    ADD COLUMN IF NOT EXISTS "formNo" SERIAL;
+ALTER TABLE "FinishedGoodsTransfer" ADD COLUMN IF NOT EXISTS "formNo" SERIAL;
+ALTER TABLE "Sale"                  ADD COLUMN IF NOT EXISTS "formNo" SERIAL;
+ALTER TABLE "StockLot"              ADD COLUMN IF NOT EXISTS "lineage" TEXT;

@@ -8,6 +8,7 @@ import LotPicker, { FullLot } from "@/components/LotPicker";
 
 interface Entry {
   id: string;
+  formNo: number;
   status: string;
   locationInitial: string | null;
   lotSectionsJson: string | null;
@@ -228,6 +229,7 @@ export default function FinishedPage() {
           <table className="w-full text-sm min-w-[600px]">
             <thead className="bg-gray-50 text-left">
               <tr>
+                <th className="px-4 py-3 font-medium text-gray-600">Form No.</th>
                 <th className="px-4 py-3 font-medium text-gray-600">From</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Lots</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Status</th>
@@ -236,12 +238,13 @@ export default function FinishedPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.length===0&&<tr><td colSpan={5} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
+              {entries.length===0&&<tr><td colSpan={6} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
               {entries.map((e)=>{
                 const s = STATUS_LABEL[e.status]||{label:e.status,color:"bg-gray-100 text-gray-600"};
                 const lots = JSON.parse(e.lotSectionsJson||"[]") as {lotSnapshot:{grade:string};sections:{qty:number;suspenseQty:number}[]}[];
                 return (
                   <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 font-bold text-emerald-700">F{e.formNo}</td>
                     <td className="px-4 py-3">{e.locationInitial??"—"}</td>
                     <td className="px-4 py-3">
                       {lots.map((l,i)=>{

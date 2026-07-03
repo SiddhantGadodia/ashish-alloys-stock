@@ -8,6 +8,7 @@ import LotPicker, { FullLot } from "@/components/LotPicker";
 
 interface Entry {
   id: string;
+  formNo: number;
   status: string;
   entryType: string;
   locationInitial: string | null;
@@ -255,6 +256,7 @@ export default function ProductionPage() {
           <table className="w-full text-sm min-w-[700px]">
             <thead className="bg-gray-50 text-left">
               <tr>
+                <th className="px-4 py-3 font-medium text-gray-600">Form No.</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Location</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Type</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Status</th>
@@ -265,13 +267,14 @@ export default function ProductionPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.length===0&&<tr><td colSpan={7} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
+              {entries.length===0&&<tr><td colSpan={8} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
               {entries.map((e) => {
                 const s = STATUS_LABEL[e.status] || { label: e.status, color: "bg-gray-100 text-gray-600" };
                 const lotsJson = e.actLotsJson || e.lotSectionsJson || "[]";
                 const lots = JSON.parse(lotsJson) as { lotSnapshot: { grade: string }; sections: { qty: number }[] }[];
                 return (
                   <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 font-bold text-purple-700">R{e.formNo}</td>
                     <td className="px-4 py-3">{e.locationInitial??"—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{e.entryType==="direct"?"Direct":"Instruction"}</td>
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-1 rounded-full font-medium ${s.color}`}>{s.label}</span></td>

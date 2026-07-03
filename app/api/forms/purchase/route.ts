@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         uidNo: uidNo || null,
         subLoc: subLoc || null,
         remarks: remarks || null,
+        lineage: `P${e.formNo}`,
         dateCreated: new Date(date),
         originForm: "purchase",
         originId: e.id,

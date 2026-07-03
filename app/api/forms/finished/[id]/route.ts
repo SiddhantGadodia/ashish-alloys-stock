@@ -35,9 +35,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         const totalDeduct = ls.sections.reduce((s, sec) => s + (sec.qty || 0) + (sec.suspenseQty || 0), 0);
         const srcLot = await tx.stockLot.findUnique({ where: { id: ls.lotId } });
         const remainingQty = (srcLot?.quantity ?? 0) - totalDeduct;
+        const newLineage = [srcLot?.lineage, `F${existing.formNo}`].filter(Boolean).join(", ");
         await tx.stockLot.update({
           where: { id: ls.lotId },
-          data: { quantity: { decrement: totalDeduct }, ...(remainingQty <= 0.001 ? { active: false } : {}) },
+          data: { quantity: { decrement: totalDeduct }, lineage: newLineage, ...(remainingQty <= 0.001 ? { active: false } : {}) },
         });
 
         const totalSuspense = ls.sections.reduce((s, sec) => s + (sec.suspenseQty || 0), 0);
@@ -49,6 +50,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           });
         }
 
+        const srcLineage = [srcLot?.lineage, `F${existing.formNo}`].filter(Boolean).join(", ");
         for (const sec of ls.sections) {
           if (sec.qty > 0) {
             const newLot = await tx.stockLot.create({
@@ -64,6 +66,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
                 quantity: sec.qty,
                 pieces: sec.pieces ?? null,
                 remarks: sec.remarks || null,
+                lineage: srcLineage,
                 dateCreated: new Date(sec.date),
                 originForm: "finished_goods",
                 originId: params.id,

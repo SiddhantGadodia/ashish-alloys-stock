@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 
 interface Entry {
   id: string;
+  formNo: number;
   date: string;
   grade: string;
   size: string;
@@ -363,6 +364,7 @@ export default function PurchasePage() {
           <table className="w-full text-sm min-w-[800px]">
             <thead className="bg-gray-50 text-left">
               <tr>
+                <th className="px-4 py-3 font-medium text-gray-600">Form No.</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Date</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Grade</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Size</th>
@@ -381,10 +383,11 @@ export default function PurchasePage() {
             </thead>
             <tbody>
               {entries.length === 0 && (
-                <tr><td colSpan={isVerifier ? 14 : 13} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
+                <tr><td colSpan={isVerifier ? 15 : 14} className="text-center text-gray-400 py-10">No entries yet.</td></tr>
               )}
               {entries.map((e) => (
                 <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="px-4 py-3 font-bold text-blue-700">P{e.formNo}</td>
                   <td className="px-4 py-3">{new Date(e.date).toLocaleDateString("en-IN")}</td>
                   <td className="px-4 py-3 font-medium">{e.grade}</td>
                   <td className="px-4 py-3">{e.size}</td>

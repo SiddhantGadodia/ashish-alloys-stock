@@ -54,6 +54,7 @@ model StockLot {
   subLoc          String?
   jwNo            String?
   remarks         String?
+  lineage         String?
   dateCreated     DateTime
   originForm      String
   originId        String
@@ -83,6 +84,7 @@ model CorrectionLog {
 
 model PurchaseEntry {
   id              String   @id @default(cuid())
+  formNo          Int      @default(autoincrement())
   date            DateTime
   grade           String
   size            String
@@ -107,7 +109,8 @@ model PurchaseEntry {
 // instrLotsJson / actLotsJson: JSON string of LotEntry[]
 // LotEntry: { lotId, lotSnapshot: {grade,size,supplyCondition,make,description,uidNo,subLoc,pieces,quantity}, detail: {date,qty,locationTo,pieces,uidNo,subLoc,remarks} }
 model InternalTransfer {
-  id   String @id @default(cuid())
+  id     String @id @default(cuid())
+  formNo Int    @default(autoincrement())
   // "instruction" | "actuals_filled" | "verified"
   status String @default("instruction")
   // "instruction" (had instr step) | "direct" (skipped instr)
@@ -138,6 +141,7 @@ model InternalTransfer {
 // actLotsJson: actuals lot sections — { lotId, lotSnapshot: {grade,size,supplyCondition,make,description,location,subLoc,quantity}, sections: [{date,machine,sizeFinal,supplyConditionFinal,qty,lengthFinal,remarks}] }
 model ProductionPlanning {
   id              String   @id @default(cuid())
+  formNo          Int      @default(autoincrement())
   status          String   @default("instruction")   // "instruction" | "actuals_filled" | "verified"
   entryType       String   @default("instruction")   // "instruction" | "direct"
   locationInitial String?
@@ -164,6 +168,7 @@ model ProductionPlanning {
 // LotSection: { lotId, lotSnapshot: {grade,make,description,uidNo,subLoc,quantity,pieces}, sections: [{date,qty,supplyCondition,sizeFinal,locationFinal,subLocFinal,suspenseQty,pieces,remarks}] }
 model FinishedGoodsTransfer {
   id     String @id @default(cuid())
+  formNo Int    @default(autoincrement())
   status String @default("actuals_filled") // "actuals_filled" | "verified"
 
   locationInitial   String?
@@ -186,6 +191,7 @@ model FinishedGoodsTransfer {
 // LotEntry: { lotId, lotSnapshot: {grade,size,supplyCondition,make,subLoc,uidNo,pieces,quantity}, detail: {customer,qty,vehicleNo,pieces,remarks} }
 model Sale {
   id        String @id @default(cuid())
+  formNo    Int    @default(autoincrement())
   status    String @default("instruction") // "instruction" | "actuals_filled" | "verified"
   entryType String @default("instruction") // "instruction" | "direct"
 
