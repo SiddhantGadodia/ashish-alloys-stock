@@ -1,39 +1,31 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { Field, DynamicSelect, inputCls } from "@/components/FormField";
-import LotSelector from "@/components/LotSelector";
+import LotPicker, { FullLot } from "@/components/LotPicker";
 
 interface Entry {
   id: string;
   status: string;
-  instrDate?: string;
-  instrGrade?: string;
-  instrSize?: string;
-  instrQuantity?: number;
-  instrMake?: string;
-  instrSupplyCondition?: string;
-  instrDescription?: string;
-  instrLocationFrom?: string;
-  instrLocationTo?: string;
-  actQuantity?: number;
-  actGrade?: string;
-  actLocationFrom?: string;
-  actLocationTo?: string;
-  instructedBy?: { name: string; role: string };
-  actualsFilledBy?: { name: string; role: string };
-  verifiedBy?: { name: string; role: string };
+  entryType: string;
+  locationFrom: string | null;
+  instrLotsJson: string | null;
+  actLotsJson: string | null;
+  instructedBy: { name: string } | null;
+  actualsFilledBy: { name: string } | null;
+  verifiedBy: { name: string } | null;
   createdAt: string;
 }
 
-interface LotSelection { lotId: string; assignedQty: number; grade: string; size: string; supplyCondition: string; make: string; description: string; quantity: number }
+type LotDetail = { date: string; qty: string; locationTo: string; pieces: string; uidNo: string; subLoc: string; remarks: string; isJw: boolean; jwNo: string };
+const emptyDetail = (): LotDetail => ({ date: "", qty: "", locationTo: "", pieces: "", uidNo: "", subLoc: "", remarks: "", isJw: false, jwNo: "" });
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  instruction: { label: "Instruction Issued", color: "bg-gray-100 text-gray-600" },
+  instruction:    { label: "Instruction", color: "bg-gray-100 text-gray-600" },
   actuals_filled: { label: "Actuals Filled", color: "bg-amber-100 text-amber-700" },
-  verified: { label: "Verified", color: "bg-green-100 text-green-700" },
+  verified:       { label: "Verified", color: "bg-green-100 text-green-700" },
 };
 
 export default function TransferPage() {
@@ -41,141 +33,93 @@ export default function TransferPage() {
   const router = useRouter();
   const user = session?.user as { id: string; role: string } | undefined;
   const isVerifier = user?.role === "verifier";
+
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [mode, setMode] = useState<"instruction" | "direct" | "actuals" | null>(null);
+  const [step, setStep] = useState(1);
+  const [locationFrom, setLocationFrom] = useState("");
+  const [selectedLots, setSelectedLots] = useState<FullLot[]>([]);
+  const [details, setDetails] = useState<Record<string, LotDetail>>({});
+  const [actualsForId, setActualsForId] = useState<string | null>(null);
+  const [instrEntry, setInstrEntry] = useState<Entry | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Instruction state (3-step)
-  const [showInstr, setShowInstr] = useState(false);
-  const [instrStep, setInstrStep] = useState(1);
-  const [locationFrom, setLocationFrom] = useState("");
-  const [instrLots, setInstrLots] = useState<LotSelection[]>([]);
-  const [instrForm, setInstrForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", subLoc: "", remarks: "" });
-
-  // Actuals state — pre-filled from instruction
-  const [actualsEntry, setActualsEntry] = useState<Entry | null>(null);
-  const [actForm, setActForm] = useState({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", subLoc: "", remarks: "" });
-
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
-
   function load() { fetch("/api/forms/transfer").then((r) => r.json()).then(setEntries); }
   useEffect(() => { if (status === "authenticated") load(); }, [status]);
 
-  function openInstr() {
-    setShowInstr(true); setInstrStep(1);
-    setLocationFrom(""); setInstrLots([]);
-    setInstrForm({ date: "", quantity: "", locationTo: "", pieces: "", uidNo: "", remarks: "" });
-    setError("");
+  function openNew(m: "instruction" | "direct") {
+    setMode(m); setStep(1); setLocationFrom(""); setSelectedLots([]); setDetails({});
+    setActualsForId(null); setInstrEntry(null); setError("");
+  }
+  function openActuals(e: Entry) {
+    setMode("actuals"); setStep(1); setLocationFrom(e.locationFrom || "");
+    setSelectedLots([]); setDetails({}); setActualsForId(e.id); setInstrEntry(e); setError("");
+  }
+  function close() { setMode(null); setActualsForId(null); setInstrEntry(null); }
+
+  function onLotsChange(lots: FullLot[]) {
+    setSelectedLots(lots);
+    setDetails((prev) => {
+      const next: Record<string, LotDetail> = {};
+      lots.forEach((l) => { next[l.id] = prev[l.id] ?? emptyDetail(); });
+      return next;
+    });
+  }
+  function setDetail(lotId: string, k: keyof LotDetail, v: string | boolean) {
+    setDetails((prev) => ({ ...prev, [lotId]: { ...prev[lotId], [k]: v } }));
   }
 
-  function goInstrStep2() {
-    if (!locationFrom) { setError("Please select Location From."); return; }
-    setError(""); setInstrStep(2);
-  }
+  function goStep2() { if (!locationFrom) { setError("Select location first"); return; } setError(""); setStep(2); }
+  function goStep3() { if (selectedLots.length === 0) { setError("Select at least one lot"); return; } setError(""); setStep(3); }
 
-  function goInstrStep3() {
-    if (instrLots.length === 0) { setError("Please select at least one lot."); return; }
-    setError(""); setInstrStep(3);
-  }
-
-  const primaryLot = instrLots[0];
-  const maxQty = instrLots.reduce((sum, l) => sum + l.quantity, 0);
-
-  async function submitInstruction(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true); setError("");
-    if (!primaryLot) { setError("No lot selected."); setSaving(false); return; }
-    const qty = parseFloat(instrForm.quantity);
-    if (isNaN(qty) || qty <= 0 || qty > maxQty) {
-      setError(`Quantity must be between 0 and ${maxQty.toFixed(3)}.`);
-      setSaving(false); return;
+  async function submit() {
+    for (const lot of selectedLots) {
+      const d = details[lot.id];
+      if (!d.date || !d.qty || !d.locationTo) { setError(`Fill date, qty and destination for all lots`); return; }
+      if (parseFloat(d.qty) > lot.quantity + 0.001) { setError(`Qty for ${lot.grade} ${lot.size} exceeds available ${lot.quantity.toFixed(3)}`); return; }
+      if (lot.pieces != null && d.pieces && parseInt(d.pieces) > lot.pieces) { setError(`Pieces for ${lot.grade} ${lot.size} exceeds lot pieces ${lot.pieces}`); return; }
     }
-    const res = await fetch("/api/forms/transfer", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        stage: "instruction",
-        date: instrForm.date,
-        grade: primaryLot.grade,
-        size: primaryLot.size,
-        supplyCondition: primaryLot.supplyCondition,
-        make: primaryLot.make,
-        description: primaryLot.description,
-        quantity: instrForm.quantity,
-        locationFrom,
-        locationTo: instrForm.locationTo,
-        pieces: instrForm.pieces,
-        uidNo: instrForm.uidNo,
-        subLoc: instrForm.subLoc,
-        remarks: instrForm.remarks,
-      }),
+    const lotsJson = selectedLots.map((lot) => {
+      const d = details[lot.id];
+      return {
+        lotId: lot.id,
+        lotSnapshot: { grade: lot.grade, size: lot.size, supplyCondition: lot.supplyCondition, make: lot.make, description: lot.description, uidNo: lot.uidNo, subLoc: lot.subLoc, pieces: lot.pieces, quantity: lot.quantity },
+        detail: { date: d.date, qty: parseFloat(d.qty), locationTo: d.locationTo, pieces: d.pieces ? parseInt(d.pieces) : undefined, uidNo: d.uidNo || undefined, subLoc: d.subLoc || undefined, remarks: d.remarks || undefined, jwNo: (mode !== "instruction" && d.isJw) ? d.jwNo.trim() : undefined },
+      };
     });
+    setSaving(true); setError("");
+    let res: Response;
+    // Validate JW fields for actuals/direct modes
+    if (mode !== "instruction") {
+      for (const lot of selectedLots) {
+        const d = details[lot.id];
+        if (d.isJw && !d.jwNo.trim()) { setError(`JW No. is required when JW is checked (${lot.grade} ${lot.size})`); setSaving(false); return; }
+      }
+    }
+    if (actualsForId) {
+      res = await fetch(`/api/forms/transfer/${actualsForId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "actuals", locationFrom, lotsJson }) });
+    } else {
+      res = await fetch("/api/forms/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: mode === "instruction" ? "instruction" : "direct_actuals", locationFrom, lotsJson }) });
+    }
     setSaving(false);
     if (!res.ok) { const d = await res.json(); setError(d.error || "Error"); return; }
-    setShowInstr(false); load();
-  }
-
-  async function submitActuals(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true); setError("");
-    if (!actualsEntry) return;
-    const res = await fetch(`/api/forms/transfer/${actualsEntry.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        stage: "actuals",
-        date: actForm.date,
-        grade: actualsEntry.instrGrade,
-        size: actualsEntry.instrSize,
-        supplyCondition: actualsEntry.instrSupplyCondition,
-        make: actualsEntry.instrMake,
-        description: actualsEntry.instrDescription,
-        quantity: actForm.quantity,
-        locationFrom: actualsEntry.instrLocationFrom,
-        locationTo: actForm.locationTo,
-        pieces: actForm.pieces,
-        uidNo: actForm.uidNo,
-        subLoc: actForm.subLoc,
-        remarks: actForm.remarks,
-        lotSelections: [],
-      }),
-    });
-    setSaving(false);
-    if (!res.ok) { const d = await res.json(); setError(d.error || "Error"); return; }
-    setActualsEntry(null); load();
+    close(); load();
   }
 
   async function verify(id: string) {
-    if (!confirm("Verify this entry? This will update the stock database.")) return;
-    const res = await fetch(`/api/forms/transfer/${id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "verify" }),
-    });
+    if (!confirm("Verify? This will update stock permanently.")) return;
+    const res = await fetch(`/api/forms/transfer/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "verify" }) });
     if (!res.ok) { const d = await res.json(); alert(d.error); return; }
     load();
   }
-
-  async function handleDelete(id: string) {
+  async function del(id: string) {
     if (!confirm("Delete this entry?")) return;
     const res = await fetch(`/api/forms/transfer/${id}`, { method: "DELETE" });
     if (!res.ok) { const d = await res.json(); alert(d.error); return; }
     load();
   }
-
-  function generateCard(e: Entry) {
-    const lines = [
-      "═══ INTERNAL TRANSFER ═══",
-      `Date: ${e.instrDate ? new Date(e.instrDate).toLocaleDateString("en-IN") : "—"}`,
-      `Grade: ${e.instrGrade || "—"}`,
-      `Size: ${e.instrSize || "—"}`,
-      `Quantity: ${e.instrQuantity ?? "—"}`,
-      `Make: ${e.instrMake || "—"}`,
-      `From: ${e.instrLocationFrom || "—"}`,
-      `To: ${e.instrLocationTo || "—"}`,
-      "═════════════════════════",
-    ];
-    navigator.clipboard.writeText(lines.join("\n")).then(() => alert("Card copied to clipboard!"));
-  }
-
-  const onInstrLotChange = useCallback((s: LotSelection[]) => setInstrLots(s), []);
-  const setI = (k: string, v: string) => setInstrForm((f) => ({ ...f, [k]: v }));
-  const setA = (k: string, v: string) => setActForm((f) => ({ ...f, [k]: v }));
 
   if (status === "loading") return null;
 
@@ -188,29 +132,57 @@ export default function TransferPage() {
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Form 1</p>
             <h1 className="text-2xl font-bold">Internal Transfer</h1>
           </div>
-          <button onClick={openInstr} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-purple-700 transition">
-            + New Instruction
-          </button>
+          {!mode && (
+            <div className="flex gap-2">
+              <button onClick={() => openNew("instruction")} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 transition">+ New Instruction</button>
+              <button onClick={() => openNew("direct")} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">Fill Actuals Directly</button>
+            </div>
+          )}
         </div>
 
-        {/* Instruction form — 3 steps */}
-        {showInstr && (
+        {mode && (
           <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              {[1, 2, 3].map((s) => (
+            {/* Step indicator */}
+            <div className="flex items-center gap-3 mb-5">
+              {[1,2,3].map((s) => (
                 <div key={s} className="flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${instrStep === s ? "bg-purple-600 text-white" : instrStep > s ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"}`}>
-                    {instrStep > s ? "✓" : s}
-                  </div>
-                  <span className={`text-sm ${instrStep === s ? "text-purple-700 font-semibold" : "text-gray-400"}`}>
-                    {s === 1 ? "Location From" : s === 2 ? "Select Lots" : "Fill Instruction"}
-                  </span>
-                  {s < 3 && <span className="text-gray-300 ml-1">›</span>}
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${step===s?"bg-blue-600 text-white":step>s?"bg-green-500 text-white":"bg-gray-200 text-gray-500"}`}>{step>s?"✓":s}</div>
+                  <span className={`text-sm ${step===s?"text-blue-700 font-semibold":"text-gray-400"}`}>{s===1?"Location":s===2?"Select Lots":"Fill Details"}</span>
+                  {s<3&&<span className="text-gray-300 ml-1">›</span>}
                 </div>
               ))}
+              <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                {mode==="actuals"?"Fill Actuals":mode==="instruction"?"New Instruction":"Direct Actuals"}
+              </span>
             </div>
 
-            {instrStep === 1 && (
+            {/* Instruction reference when filling actuals */}
+            {mode==="actuals" && instrEntry?.instrLotsJson && (
+              <details className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3" open={false}>
+                <summary className="text-xs font-semibold text-blue-700 uppercase tracking-wide cursor-pointer">Instruction Reference ▾</summary>
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs text-blue-600">From: <span className="font-semibold">{instrEntry.locationFrom}</span></p>
+                  {(JSON.parse(instrEntry.instrLotsJson) as { lotSnapshot: FullLot; detail: LotDetail }[]).map((l, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-blue-100 overflow-hidden">
+                      <div className="bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 border-b border-blue-100">Lot {i+1} — Source Details</div>
+                      <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2 text-xs">
+                        {([["Grade", l.lotSnapshot.grade],["Size", l.lotSnapshot.size],["Supply Cond.", l.lotSnapshot.supplyCondition],["Make", l.lotSnapshot.make],["Description", l.lotSnapshot.description],["UID No.", l.lotSnapshot.uidNo??"—"],["Sub Loc", l.lotSnapshot.subLoc??"—"],["Avail. Qty", String(l.lotSnapshot.quantity)],["Pieces", l.lotSnapshot.pieces!=null?String(l.lotSnapshot.pieces):"—"]] as [string,string][]).map(([k,v])=>(
+                          <div key={k}><span className="text-gray-400 block">{k}</span><span className="font-medium">{v}</span></div>
+                        ))}
+                      </div>
+                      <div className="border-t border-blue-100 px-3 py-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2 text-xs bg-blue-50/40">
+                        <div className="col-span-full text-blue-700 font-semibold text-xs mb-1">Instruction Details</div>
+                        {([["Qty", String(l.detail.qty)],["Location To", l.detail.locationTo],["UID No.", l.detail.uidNo??"—"],["Sub Loc", l.detail.subLoc??"—"],["Pieces", l.detail.pieces!=null?String(l.detail.pieces):"—"],["Remarks", l.detail.remarks??"—"]] as [string,string][]).map(([k,v])=>(
+                          <div key={k}><span className="text-gray-400 block">{k}</span><span className="font-medium">{v}</span></div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {step===1 && (
               <div className="space-y-4 max-w-sm">
                 <h2 className="text-base font-semibold">Step 1 — Select Source Location</h2>
                 <Field label="Location From" required>
@@ -218,140 +190,107 @@ export default function TransferPage() {
                 </Field>
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <div className="flex gap-3">
-                  <button type="button" onClick={goInstrStep2} className="bg-purple-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-purple-700 transition">Next →</button>
-                  <button type="button" onClick={() => setShowInstr(false)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
+                  <button onClick={goStep2} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 transition">Next →</button>
+                  <button onClick={close} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
                 </div>
               </div>
             )}
 
-            {instrStep === 2 && (
+            {step===2 && (
               <div className="space-y-4">
-                <h2 className="text-base font-semibold">Step 2 — Select Lots to Transfer <span className="text-gray-400 font-normal text-sm">from {locationFrom}</span></h2>
-                <LotSelector filterByLocation={locationFrom} onSelectionChange={onInstrLotChange} />
+                <h2 className="text-base font-semibold">Step 2 — Select Lots <span className="text-gray-400 font-normal text-sm">at {locationFrom}</span></h2>
+                <LotPicker location={locationFrom} selected={selectedLots} onChange={onLotsChange} />
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <div className="flex gap-3">
-                  <button type="button" onClick={goInstrStep3} className="bg-purple-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-purple-700 transition">Next →</button>
-                  <button type="button" onClick={() => setInstrStep(1)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
+                  <button onClick={goStep3} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 transition">Next →</button>
+                  <button onClick={() => setStep(1)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
                 </div>
               </div>
             )}
 
-            {instrStep === 3 && primaryLot && (
-              <div className="space-y-4">
-                <h2 className="text-base font-semibold">Step 3 — Issue Instruction</h2>
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2">From Selected Lot(s)</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                    <div><span className="text-gray-500">Grade:</span> <span className="font-semibold">{primaryLot.grade}</span></div>
-                    <div><span className="text-gray-500">Size:</span> <span className="font-semibold">{primaryLot.size}</span></div>
-                    <div><span className="text-gray-500">Make:</span> <span className="font-semibold">{primaryLot.make}</span></div>
-                    <div><span className="text-gray-500">Supply Cond.:</span> <span className="font-semibold">{primaryLot.supplyCondition}</span></div>
-                    <div><span className="text-gray-500">Description:</span> <span className="font-semibold">{primaryLot.description}</span></div>
-                    <div><span className="text-gray-500">From:</span> <span className="font-semibold">{locationFrom}</span></div>
-                  </div>
-                  {instrLots.length > 1 && (
-                    <p className="text-xs text-purple-600 mt-2">{instrLots.length} lots selected · total available: {maxQty.toFixed(3)} MT</p>
-                  )}
+            {step===3 && (
+              <div className="space-y-5">
+                <h2 className="text-base font-semibold">Step 3 — Fill Details Per Lot</h2>
+                {selectedLots.map((lot) => {
+                  const d = details[lot.id] ?? emptyDetail();
+                  return (
+                    <div key={lot.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                        {([["Grade",lot.grade],["Size",lot.size],["Supply Cond.",lot.supplyCondition],["Make",lot.make],["Description",lot.description],["UID No.",lot.uidNo??"—"],["Sub Loc",lot.subLoc??"—"],["Avail. Qty",lot.quantity.toFixed(3)]] as [string,string][]).map(([k,v])=>(
+                          <div key={k}><span className="text-gray-400 text-xs">{k}</span><p className="font-medium">{v}</p></div>
+                        ))}
+                        {lot.pieces!=null&&<div><span className="text-gray-400 text-xs">Pieces</span><p className="font-medium">{lot.pieces}</p></div>}
+                      </div>
+                      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <Field label="Date" required><input type="date" required value={d.date} onChange={(e)=>setDetail(lot.id,"date",e.target.value)} className={inputCls()} /></Field>
+                        <Field label={`Qty (max ${lot.quantity.toFixed(3)})`} required><input type="number" step="0.001" min="0" max={lot.quantity} required value={d.qty} onChange={(e)=>setDetail(lot.id,"qty",e.target.value)} className={inputCls()} /></Field>
+                        <Field label="Location To" required><DynamicSelect field="location" value={d.locationTo} onChange={(v)=>setDetail(lot.id,"locationTo",v)} required /></Field>
+                        {lot.pieces!=null&&<Field label={`Pieces (max ${lot.pieces})`}><input type="number" min="0" max={lot.pieces} value={d.pieces} onChange={(e)=>setDetail(lot.id,"pieces",e.target.value)} className={inputCls()} /></Field>}
+                        <Field label="UID No."><input type="text" value={d.uidNo} onChange={(e)=>setDetail(lot.id,"uidNo",e.target.value)} className={inputCls()} /></Field>
+                        <Field label="Sub Loc"><input type="text" value={d.subLoc} onChange={(e)=>setDetail(lot.id,"subLoc",e.target.value)} className={inputCls()} /></Field>
+                        <Field label="Remarks"><input type="text" value={d.remarks} onChange={(e)=>setDetail(lot.id,"remarks",e.target.value)} className={inputCls()} /></Field>
+                        {(mode==="actuals"||mode==="direct")&&(
+                          <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-4 pt-1">
+                            <label className="flex items-center gap-2 text-sm font-medium text-indigo-700 cursor-pointer select-none">
+                              <input type="checkbox" checked={d.isJw} onChange={(e)=>setDetail(lot.id,"isJw",e.target.checked)} className="accent-indigo-600 w-4 h-4" />
+                              JW
+                            </label>
+                            {d.isJw&&(
+                              <Field label="JW No." required>
+                                <input type="text" required value={d.jwNo} onChange={(e)=>setDetail(lot.id,"jwNo",e.target.value)} className={inputCls()+" w-48"} placeholder="Job Work No." />
+                              </Field>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+                <div className="flex gap-3">
+                  <button onClick={submit} disabled={saving} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition">
+                    {saving?"Saving…":mode==="actuals"?"Submit Actuals":mode==="instruction"?"Create Instruction":"Submit Actuals"}
+                  </button>
+                  <button onClick={()=>setStep(2)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
+                  <button onClick={close} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
                 </div>
-
-                <form onSubmit={submitInstruction} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <Field label="Date" required><input type="date" required value={instrForm.date} onChange={(e) => setI("date", e.target.value)} className={inputCls()} /></Field>
-                    <Field label={`Quantity (max ${maxQty.toFixed(3)})`} required>
-                      <input type="number" step="0.001" required min="0.001" max={maxQty}
-                        value={instrForm.quantity} onChange={(e) => setI("quantity", e.target.value)} className={inputCls()} />
-                      <p className="text-xs text-gray-400 mt-0.5">0 – {maxQty.toFixed(3)} MT available</p>
-                    </Field>
-                    <Field label="Location To" required><DynamicSelect field="location" value={instrForm.locationTo} onChange={(v) => setI("locationTo", v)} required /></Field>
-                    <Field label="Pieces"><input type="number" value={instrForm.pieces} onChange={(e) => setI("pieces", e.target.value)} className={inputCls()} /></Field>
-                    <Field label="UID No."><input type="text" value={instrForm.uidNo} onChange={(e) => setI("uidNo", e.target.value)} className={inputCls()} /></Field>
-                    <Field label="Sub Loc"><input type="text" value={instrForm.subLoc} onChange={(e) => setI("subLoc", e.target.value)} className={inputCls()} /></Field>
-                    <Field label="Remarks"><input type="text" value={instrForm.remarks} onChange={(e) => setI("remarks", e.target.value)} className={inputCls()} /></Field>
-                  </div>
-                  {error && <p className="text-red-500 text-sm">{error}</p>}
-                  <div className="flex gap-3">
-                    <button type="submit" disabled={saving} className="bg-purple-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 transition">{saving ? "Saving..." : "Issue Instruction"}</button>
-                    <button type="button" onClick={() => setInstrStep(2)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">← Back</button>
-                  </div>
-                </form>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Actuals form — pre-filled from instruction lot */}
-        {actualsEntry && (
-          <div className="bg-white rounded-2xl border border-amber-200 p-6 mb-6 shadow-sm">
-            <h2 className="text-base font-semibold mb-4">Stage 2 — Fill Actuals</h2>
-
-            {/* Read-only lot info from instruction */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-              <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">From Original Instruction Lot</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                <div><span className="text-gray-500">Grade:</span> <span className="font-semibold">{actualsEntry.instrGrade}</span></div>
-                <div><span className="text-gray-500">Size:</span> <span className="font-semibold">{actualsEntry.instrSize}</span></div>
-                <div><span className="text-gray-500">Make:</span> <span className="font-semibold">{actualsEntry.instrMake}</span></div>
-                <div><span className="text-gray-500">Supply Cond.:</span> <span className="font-semibold">{actualsEntry.instrSupplyCondition || "—"}</span></div>
-                <div><span className="text-gray-500">Description:</span> <span className="font-semibold">{actualsEntry.instrDescription || "—"}</span></div>
-                <div><span className="text-gray-500">From:</span> <span className="font-semibold">{actualsEntry.instrLocationFrom}</span></div>
-              </div>
-            </div>
-
-            <form onSubmit={submitActuals} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Field label="Date" required><input type="date" required value={actForm.date} onChange={(e) => setA("date", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Quantity (Actual)" required><input type="number" step="0.001" required value={actForm.quantity} onChange={(e) => setA("quantity", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Location To" required><DynamicSelect field="location" value={actForm.locationTo} onChange={(v) => setA("locationTo", v)} required /></Field>
-                <Field label="Pieces"><input type="number" value={actForm.pieces} onChange={(e) => setA("pieces", e.target.value)} className={inputCls()} /></Field>
-                <Field label="UID No."><input type="text" value={actForm.uidNo} onChange={(e) => setA("uidNo", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Sub Loc"><input type="text" value={actForm.subLoc} onChange={(e) => setA("subLoc", e.target.value)} className={inputCls()} /></Field>
-                <Field label="Remarks"><input type="text" value={actForm.remarks} onChange={(e) => setA("remarks", e.target.value)} className={inputCls()} /></Field>
-              </div>
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-              <div className="flex gap-3">
-                <button type="submit" disabled={saving} className="bg-amber-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition">{saving ? "Saving..." : "Submit Actuals"}</button>
-                <button type="button" onClick={() => setActualsEntry(null)} className="text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">Cancel</button>
-              </div>
-            </form>
           </div>
         )}
 
         <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
-          <table className="w-full text-sm min-w-[800px]">
+          <table className="w-full text-sm min-w-[700px]">
             <thead className="bg-gray-50 text-left">
               <tr>
-                <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Grade</th>
-                <th className="px-4 py-3 font-medium text-gray-600">From → To</th>
-                <th className="px-4 py-3 font-medium text-gray-600 text-right">Qty</th>
+                <th className="px-4 py-3 font-medium text-gray-600">From</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Lots</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Type</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-                {isVerifier && <th className="px-4 py-3 font-medium text-gray-600">By</th>}
+                <th className="px-4 py-3 font-medium text-gray-600">By</th>
                 <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 && <tr><td colSpan={isVerifier ? 7 : 6} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
+              {entries.length===0&&<tr><td colSpan={6} className="text-center text-gray-400 py-10">No entries yet.</td></tr>}
               {entries.map((e) => {
-                const s = STATUS_LABEL[e.status] || { label: e.status, color: "bg-gray-100 text-gray-600" };
+                const s = STATUS_LABEL[e.status]||{label:e.status,color:"bg-gray-100 text-gray-600"};
+                const lots = JSON.parse(e.actLotsJson||e.instrLotsJson||"[]") as {lotSnapshot:{grade:string;size:string};detail:{qty:number}}[];
+                const totalQty = lots.reduce((sum,l)=>sum+(l.detail?.qty||0),0);
                 return (
                   <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-3">{e.instrDate ? new Date(e.instrDate).toLocaleDateString("en-IN") : "—"}</td>
-                    <td className="px-4 py-3 font-medium">{e.instrGrade || "—"}</td>
-                    <td className="px-4 py-3">{e.instrLocationFrom} → {e.instrLocationTo}</td>
-                    <td className="px-4 py-3 text-right">{e.instrQuantity ?? "—"}</td>
+                    <td className="px-4 py-3">{e.locationFrom??"—"}</td>
+                    <td className="px-4 py-3">
+                      {lots.map((l,i)=><span key={i} className="inline-block mr-1 text-xs bg-gray-100 rounded px-1">{l.lotSnapshot?.grade} {l.lotSnapshot?.size}</span>)}
+                      {lots.length>0&&<span className="text-gray-400 text-xs ml-1">({totalQty.toFixed(3)})</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{e.entryType==="direct"?"Direct":"Instruction"}</td>
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-1 rounded-full font-medium ${s.color}`}>{s.label}</span></td>
-                    {isVerifier && <td className="px-4 py-3 text-gray-500 text-xs">{e.instructedBy?.name || "—"}</td>}
+                    <td className="px-4 py-3 text-xs text-gray-500">{e.instructedBy?.name||e.actualsFilledBy?.name||"—"}</td>
                     <td className="px-4 py-3 flex gap-2 flex-wrap">
-                      <button onClick={() => generateCard(e)} className="text-purple-600 hover:underline text-xs">Copy Card</button>
-                      {e.status === "instruction" && (
-                        <button onClick={() => {
-                          setActualsEntry(e);
-                          setActForm({ date: "", quantity: "", locationTo: e.instrLocationTo || "", pieces: "", uidNo: "", remarks: "" });
-                          setError("");
-                        }} className="text-amber-600 hover:underline text-xs">Fill Actuals</button>
-                      )}
-                      {e.status === "actuals_filled" && isVerifier && <button onClick={() => verify(e.id)} className="text-green-600 hover:underline text-xs">Verify</button>}
-                      {(e.status !== "verified" || isVerifier) && <button onClick={() => handleDelete(e.id)} className="text-red-500 hover:underline text-xs">Delete</button>}
+                      {e.status==="instruction"&&!mode&&<button onClick={()=>openActuals(e)} className="text-amber-600 hover:underline text-xs">Fill Actuals</button>}
+                      {e.status==="actuals_filled"&&isVerifier&&<button onClick={()=>verify(e.id)} className="text-green-600 hover:underline text-xs">Verify</button>}
+                      {(e.status!=="verified"||isVerifier)&&<button onClick={()=>del(e.id)} className="text-red-500 hover:underline text-xs">Delete</button>}
                     </td>
                   </tr>
                 );

@@ -21,24 +21,42 @@ export async function POST(req: Request) {
   if (error) return error;
   const user = session!.user as { id: string };
   const body = await req.json();
-  const { stage } = body;
+  const { stage, locationFrom, lotsJson } = body;
+
+  if (!locationFrom || !lotsJson?.length) {
+    return NextResponse.json({ error: "Missing locationFrom or lots" }, { status: 400 });
+  }
 
   if (stage === "instruction") {
-    const { date, grade, size, quantity, make, uidNo, pieces, subLoc, supplyCondition, locationFrom, locationTo, remarks, description } = body;
-    if (!date || !grade || !size || !quantity || !make || !supplyCondition || !locationFrom || !locationTo) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
     const entry = await prisma.internalTransfer.create({
       data: {
         status: "instruction",
-        instrDate: new Date(date), instrGrade: grade, instrSize: size,
-        instrQuantity: parseFloat(quantity), instrMake: make,
-        instrUidNo: uidNo || null, instrPieces: pieces ? parseInt(pieces) : null,
-        instrSubLoc: subLoc || null,
-        instrSupplyCondition: supplyCondition, instrLocationFrom: locationFrom,
-        instrLocationTo: locationTo, instrRemarks: remarks || null,
-        instrDescription: description || null,
-        instructedById: user.id, instructedAt: new Date(),
+        entryType: "instruction",
+        locationFrom,
+        instrLotsJson: JSON.stringify(lotsJson),
+        instructedById: user.id,
+        instructedAt: new Date(),
+      },
+    });
+    return NextResponse.json(entry, { status: 201 });
+  }
+
+  if (stage === "direct_actuals") {
+    // Validate qty against lots
+    for (const l of lotsJson) {
+      const lot = await prisma.stockLot.findUnique({ where: { id: l.lotId } });
+      if (!lot || lot.quantity < l.detail.qty) {
+        return NextResponse.json({ error: `Lot ${l.lotId} insufficient quantity` }, { status: 409 });
+      }
+    }
+    const entry = await prisma.internalTransfer.create({
+      data: {
+        status: "actuals_filled",
+        entryType: "direct",
+        locationFrom,
+        actLotsJson: JSON.stringify(lotsJson),
+        actualsFilledById: user.id,
+        actualsFilledAt: new Date(),
       },
     });
     return NextResponse.json(entry, { status: 201 });

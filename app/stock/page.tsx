@@ -16,6 +16,7 @@ interface StockLot {
   length: number | null;
   description: string;
   uidNo: string | null;
+  jwNo: string | null;
   remarks: string | null;
   dateCreated: string;
   originForm: string;
@@ -27,15 +28,62 @@ interface SuspenseTotal {
   total: number;
 }
 
-const TABS = ["All Lots", "By Form", "Suspense"] as const;
+const TABS = ["All Lots", "By Form", "Suspense", "Job Works", "Sales", "Production Chart"] as const;
 type Tab = typeof TABS[number];
 
-const COL_KEYS = ["grade", "size", "supplyCondition", "make", "location", "description"] as const;
+interface JwLot {
+  id: string; grade: string; size: string; supplyCondition: string; make: string;
+  location: string; pieces: number | null; quantity: number; length: number | null;
+  description: string; uidNo: string | null; subLoc: string | null; jwNo: string | null;
+  remarks: string | null; dateCreated: string;
+}
+interface JwEntry { jwNo: string; rows: { type: string; lot: JwLot }[] }
+
+interface SaleRow {
+  saleId: string;
+  date: string;
+  customer: string;
+  qty: number;
+  vehicleNo: string;
+  grade: string;
+  size: string;
+  supplyCondition: string;
+  make: string;
+  location: string;
+  subLoc: string;
+  uidNo: string;
+  pieces: string;
+  status: string;
+}
+
+interface ProdChartRow {
+  id: string;
+  machine: string;
+  sizeOg: string;
+  sizeFinal: string;
+  grade: string;
+  qty: number;
+  supplyConditionOg: string;
+  supplyConditionFinal: string;
+  make: string;
+  description: string;
+  location: string;
+  subLoc: string;
+  length: number;
+  remarks: string;
+}
+
+const COL_KEYS = ["grade", "size", "supplyCondition", "make", "location", "description", "subLoc"] as const;
 type ColKey = typeof COL_KEYS[number];
-const COL_LABELS: Record<ColKey, string> = { grade: "Grade", size: "Size", supplyCondition: "Supply Cond.", make: "Make", location: "Location", description: "Description" };
+const COL_LABELS: Record<ColKey, string> = { grade: "Grade", size: "Size", supplyCondition: "Supply Cond.", make: "Make", location: "Location", description: "Description", subLoc: "Sub Loc" };
 
 function distinct(lots: StockLot[], key: ColKey): string[] {
-  return Array.from(new Set(lots.map((l) => l[key] ?? "").filter(Boolean))).sort();
+  // For subLoc include blank as an option
+  if (key === "subLoc") {
+    const vals = Array.from(new Set(lots.map((l) => (l as StockLot & { subLoc?: string | null }).subLoc ?? ""))).sort();
+    return vals;
+  }
+  return Array.from(new Set(lots.map((l) => (l as Record<string, string>)[key] ?? "").filter(Boolean))).sort();
 }
 
 // Returns lots filtered by all columns EXCEPT the given key (for cascading dropdown values)
@@ -43,14 +91,24 @@ function filteredExcept(lots: StockLot[], colFilters: Record<ColKey, Set<string>
   return lots.filter((l) =>
     COL_KEYS.every((k) => {
       if (k === except) return true;
-      return colFilters[k].size === 0 || colFilters[k].has(l[k] ?? "");
+      if (colFilters[k].size === 0) return true;
+      const val = k === "subLoc"
+        ? ((l as StockLot & { subLoc?: string | null }).subLoc ?? "")
+        : ((l as Record<string, string>)[k] ?? "");
+      return colFilters[k].has(val);
     })
   );
 }
 
 function applyFilters(lots: StockLot[], colFilters: Record<ColKey, Set<string>>): StockLot[] {
   return lots.filter((l) =>
-    COL_KEYS.every((k) => colFilters[k].size === 0 || colFilters[k].has(l[k] ?? ""))
+    COL_KEYS.every((k) => {
+      if (colFilters[k].size === 0) return true;
+      const val = k === "subLoc"
+        ? ((l as StockLot & { subLoc?: string | null }).subLoc ?? "")
+        : ((l as Record<string, string>)[k] ?? "");
+      return colFilters[k].has(val);
+    })
   );
 }
 
@@ -162,6 +220,83 @@ function ColumnFilter({ label, values, selected, onChange }: {
   );
 }
 
+type FlatJwRow = { key: string; jwNo: string; jwSpan: number | undefined; lotNo: number; lotSpan: number | undefined; type: string; lot: JwLot };
+
+function buildFlatJwRows(entries: JwEntry[]): FlatJwRow[] {
+  const flat: FlatJwRow[] = [];
+  for (const entry of entries) {
+    const sgs: { lotNo: number; rows: JwEntry["rows"] }[] = [];
+    for (const row of entry.rows) {
+      if (row.type === "transferred") sgs.push({ lotNo: sgs.length + 1, rows: [row] });
+      else if (sgs.length > 0) sgs[sgs.length - 1].rows.push(row);
+    }
+    let firstOfEntry = true;
+    for (const sg of sgs) {
+      let firstOfSg = true;
+      for (const row of sg.rows) {
+        flat.push({
+          key: `${entry.jwNo}-${flat.length}`,
+          jwNo: entry.jwNo,
+          jwSpan: firstOfEntry ? entry.rows.length : undefined,
+          lotNo: sg.lotNo,
+          lotSpan: firstOfSg ? sg.rows.length : undefined,
+          type: row.type,
+          lot: row.lot,
+        });
+        firstOfEntry = false;
+        firstOfSg = false;
+      }
+    }
+  }
+  return flat;
+}
+
+function JwTableBody({ entries }: { entries: JwEntry[] }) {
+  const rows = buildFlatJwRows(entries);
+  return (
+    <tbody>
+      {rows.map((r) => {
+        const l = r.lot;
+        const isT = r.type === "transferred";
+        return (
+          <tr key={r.key} className={`border-t border-gray-100 ${isT ? "bg-indigo-50/60" : "bg-emerald-50/60"}`}>
+            {r.jwSpan !== undefined && (
+              <td rowSpan={r.jwSpan} className="px-3 py-2 font-bold text-indigo-700 align-middle border-r border-indigo-100 whitespace-nowrap">{r.jwNo}</td>
+            )}
+            {r.lotSpan !== undefined && (
+              <td rowSpan={r.lotSpan} className="px-3 py-2 align-middle border-r border-gray-100 whitespace-nowrap">
+                <span className="text-xs font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">Lot {r.lotNo}</span>
+              </td>
+            )}
+            <td className="px-3 py-2 whitespace-nowrap">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isT ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"}`}>
+                {isT ? "Transferred" : "Finished"}
+              </span>
+            </td>
+            <td className="px-3 py-2 whitespace-nowrap">{new Date(l.dateCreated).toLocaleDateString("en-IN")}</td>
+            <td className="px-3 py-2 font-medium whitespace-nowrap">{l.grade}</td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.size}</td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.supplyCondition}</td>
+            <td className="px-3 py-2 text-right font-semibold">{l.quantity.toFixed(3)}</td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.location}</td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.make}</td>
+            <td className="px-3 py-2 whitespace-nowrap">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${l.description === "Prime" || l.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                {l.description}
+              </span>
+            </td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.uidNo ?? "—"}</td>
+            <td className="px-3 py-2 text-right">{l.pieces ?? "—"}</td>
+            <td className="px-3 py-2 whitespace-nowrap">{l.subLoc ?? "—"}</td>
+            <td className="px-3 py-2 text-right">{l.length ?? "—"}</td>
+            <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{l.remarks ?? "—"}</td>
+          </tr>
+        );
+      })}
+    </tbody>
+  );
+}
+
 export default function StockPage() {
   const { status } = useSession();
   const router = useRouter();
@@ -170,11 +305,19 @@ export default function StockPage() {
   const [suspense, setSuspense] = useState<SuspenseTotal[]>([]);
   const [loading, setLoading] = useState(true);
   const [colFilters, setColFilters] = useState<Record<ColKey, Set<string>>>({
-    grade: new Set(), size: new Set(), supplyCondition: new Set(), make: new Set(), location: new Set(), description: new Set(),
+    grade: new Set(), size: new Set(), supplyCondition: new Set(), make: new Set(), location: new Set(), description: new Set(), subLoc: new Set(),
   });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "size" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [jwEntries, setJwEntries] = useState<JwEntry[]>([]);
+  const [jwLoading, setJwLoading] = useState(false);
+  const [saleRows, setSaleRows] = useState<SaleRow[]>([]);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [prodRows, setProdRows] = useState<ProdChartRow[]>([]);
+  const [prodLoading, setProdLoading] = useState(false);
 
   useEffect(() => { if (status === "unauthenticated") router.push("/login"); }, [status, router]);
 
@@ -195,6 +338,82 @@ export default function StockPage() {
       });
   }, [status]);
 
+  useEffect(() => {
+    if (tab === "Job Works" && status === "authenticated") {
+      setJwLoading(true);
+      fetch("/api/jobworks").then((r) => r.json()).then((d) => { setJwEntries(d.entries || []); setJwLoading(false); });
+    }
+    if (tab === "Production Chart" && status === "authenticated") {
+      setProdLoading(true);
+      fetch("/api/forms/production").then((r) => r.json()).then((raw) => {
+        type ActSec = { date: string; machine: string; sizeFinal: string; supplyConditionFinal: string; qty: number; lengthFinal: number; remarks: string };
+        type ActLotEntry = { lotId: string; lotSnapshot: { grade: string; size: string; supplyCondition: string; make: string; description: string; location: string; subLoc?: string; quantity: number }; sections: ActSec[] };
+        const entries = raw as { id: string; status: string; actLotsJson: string | null }[];
+        const rows: ProdChartRow[] = [];
+        for (const e of entries) {
+          if (e.status !== "verified" || !e.actLotsJson) continue;
+          const lots = JSON.parse(e.actLotsJson) as ActLotEntry[];
+          for (const l of lots) {
+            for (const sec of l.sections) {
+              rows.push({
+                id: `${e.id}-${rows.length}`,
+                machine: sec.machine || "—",
+                sizeOg: l.lotSnapshot.size,
+                sizeFinal: sec.sizeFinal || "—",
+                grade: l.lotSnapshot.grade,
+                qty: sec.qty,
+                supplyConditionOg: l.lotSnapshot.supplyCondition,
+                supplyConditionFinal: sec.supplyConditionFinal || "—",
+                make: l.lotSnapshot.make,
+                description: l.lotSnapshot.description,
+                location: l.lotSnapshot.location,
+                subLoc: l.lotSnapshot.subLoc || "—",
+                length: sec.lengthFinal,
+                remarks: sec.remarks || "—",
+              });
+            }
+          }
+        }
+        setProdRows(rows);
+        setProdLoading(false);
+      });
+    }
+    if (tab === "Sales" && status === "authenticated") {
+      setSalesLoading(true);
+      fetch("/api/forms/sales").then((r) => r.json()).then((raw) => {
+        const entries = raw as { id: string; status: string; locationFrom: string | null; actLotsJson: string | null; instrLotsJson: string | null; createdAt: string }[];
+        const rows: SaleRow[] = [];
+        for (const e of entries) {
+          if (e.status !== "verified") continue;
+          const json = e.actLotsJson || e.instrLotsJson;
+          if (!json) continue;
+          type LotEntry = { lotSnapshot: { grade: string; size: string; supplyCondition: string; make: string; subLoc?: string; uidNo?: string; pieces?: number }; detail: { customer: string; qty: number; vehicleNo?: string; pieces?: number } };
+          const lots = JSON.parse(json) as LotEntry[];
+          for (const l of lots) {
+            rows.push({
+              saleId: e.id,
+              date: e.createdAt,
+              customer: l.detail.customer || "—",
+              qty: l.detail.qty,
+              vehicleNo: l.detail.vehicleNo || "—",
+              grade: l.lotSnapshot.grade,
+              size: l.lotSnapshot.size,
+              supplyCondition: l.lotSnapshot.supplyCondition,
+              make: l.lotSnapshot.make,
+              location: e.locationFrom || "—",
+              subLoc: l.lotSnapshot.subLoc || "—",
+              uidNo: l.lotSnapshot.uidNo || "—",
+              pieces: l.detail.pieces != null ? String(l.detail.pieces) : (l.lotSnapshot.pieces != null ? String(l.lotSnapshot.pieces) : "—"),
+              status: e.status,
+            });
+          }
+        }
+        setSaleRows(rows);
+        setSalesLoading(false);
+      });
+    }
+  }, [tab, status]);
+
   if (status === "loading") return null;
 
   function setFilter(k: ColKey, s: Set<string>) {
@@ -213,8 +432,23 @@ export default function StockPage() {
     return true;
   }
 
-  const filtered = applyFilters(lots, colFilters).filter(applyDateFilter);
-  const byForm = (form: string) => applyFilters(lots.filter((l) => l.originForm === form), colFilters).filter(applyDateFilter);
+  function applySort(arr: StockLot[]): StockLot[] {
+    if (!sortBy) return arr;
+    return [...arr].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "date") cmp = new Date(a.dateCreated).getTime() - new Date(b.dateCreated).getTime();
+      if (sortBy === "size") cmp = parseFloat(a.size) - parseFloat(b.size) || a.size.localeCompare(b.size);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }
+
+  function toggleSort(key: "date" | "size") {
+    if (sortBy === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
+    else { setSortBy(key); setSortDir("asc"); }
+  }
+
+  const filtered = applySort(applyFilters(lots, colFilters).filter(applyDateFilter));
+  const byForm = (form: string) => applySort(applyFilters(lots.filter((l) => l.originForm === form), colFilters).filter(applyDateFilter));
 
   const BY_FORM_SECTIONS = [
     { key: "purchase", label: "Purchase Entries" },
@@ -238,7 +472,7 @@ export default function StockPage() {
         </div>
 
         {tab === "All Lots" && (
-          <LotTable lots={filtered} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+          <LotTable lots={filtered} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
         )}
 
         {tab === "By Form" && (
@@ -260,12 +494,168 @@ export default function StockPage() {
                   </button>
                   {open && (
                     <div className="border-t border-gray-100">
-                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+                      <LotTable lots={sectionLots} loading={loading} colFilters={colFilters} cascadeValues={cascadeValues} setFilter={setFilter} dateFrom={dateFrom} dateTo={dateTo} onDateChange={(f, t) => { setDateFrom(f); setDateTo(t); }} sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                     </div>
                   )}
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {tab === "Job Works" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-indigo-50">
+              <h2 className="text-base font-semibold text-indigo-800">Job Works</h2>
+              <p className="text-xs text-indigo-500 mt-0.5">Lots created via JW in Internal Transfer, and their Finished Goods outputs</p>
+            </div>
+            {jwLoading ? (
+              <p className="text-center text-gray-400 py-10 text-sm">Loading…</p>
+            ) : jwEntries.length === 0 ? (
+              <p className="text-center text-gray-400 py-10 text-sm">No job work entries yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1200px]">
+                  <thead className="bg-gray-50 text-left">
+                    <tr>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">JW No.</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Lot</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Type</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Date</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Grade</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Size</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Supply Cond.</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Location</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Make</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Description</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
+                    </tr>
+                  </thead>
+                  <JwTableBody entries={jwEntries} />
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "Sales" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-red-50">
+              <h2 className="text-base font-semibold text-red-800">Sales</h2>
+              <p className="text-xs text-red-500 mt-0.5">All sale entries — instruction and actuals</p>
+            </div>
+            {salesLoading ? (
+              <p className="text-center text-gray-400 py-10 text-sm">Loading…</p>
+            ) : saleRows.length === 0 ? (
+              <p className="text-center text-gray-400 py-10 text-sm">No sale entries yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1100px]">
+                  <thead className="bg-gray-50 text-left">
+                    <tr>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Status</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Customer</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Vehicle No.</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Grade</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Size</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Supply Cond.</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Make</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Location</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {saleRows.map((r, i) => {
+                      const statusColor = r.status === "verified" ? "bg-green-100 text-green-700" : r.status === "actuals_filled" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600";
+                      const statusLabel = r.status === "verified" ? "Verified" : r.status === "actuals_filled" ? "Actuals Filled" : "Instruction";
+                      return (
+                        <tr key={`${r.saleId}-${i}`} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusColor}`}>{statusLabel}</span>
+                          </td>
+                          <td className="px-3 py-2 font-semibold whitespace-nowrap">{r.customer}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{r.qty.toFixed(3)}</td>
+                          <td className="px-3 py-2 text-right">{r.pieces}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.vehicleNo}</td>
+                          <td className="px-3 py-2 font-medium whitespace-nowrap">{r.grade}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.size}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.supplyCondition}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.make}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.location}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.subLoc}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.uidNo}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "Production Chart" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-purple-50">
+              <h2 className="text-base font-semibold text-purple-800">Production Chart</h2>
+              <p className="text-xs text-purple-500 mt-0.5">Verified production actuals — one row per section</p>
+            </div>
+            {prodLoading ? (
+              <p className="text-center text-gray-400 py-10 text-sm">Loading…</p>
+            ) : prodRows.length === 0 ? (
+              <p className="text-center text-gray-400 py-10 text-sm">No verified production actuals yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1400px]">
+                  <thead className="bg-gray-50 text-left">
+                    <tr>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Machine</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">OG Size</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Final Size</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Grade</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">SC Initial</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">SC Final</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Make</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Description</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Location</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
+                      <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prodRows.map((r) => (
+                      <tr key={r.id} className="border-t border-gray-100 hover:bg-purple-50/40">
+                        <td className="px-3 py-2 font-semibold text-purple-700 whitespace-nowrap">{r.machine}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.sizeOg}</td>
+                        <td className="px-3 py-2 whitespace-nowrap font-medium">{r.sizeFinal}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.grade}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{r.qty.toFixed(3)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{r.supplyConditionOg}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.supplyConditionFinal}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.make}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.description === "Prime" || r.description === "PRIME" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>{r.description}</span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.location}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.subLoc}</td>
+                        <td className="px-3 py-2 text-right">{r.length || "—"}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{r.remarks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -310,15 +700,19 @@ const COL_COLORS: Record<ColKey, { th: string; td: string }> = {
   location:        { th: "bg-rose-100",   td: "bg-rose-50" },
   make:            { th: "bg-orange-100", td: "bg-orange-50" },
   description:     { th: "bg-amber-100",  td: "bg-amber-50" },
+  subLoc:          { th: "bg-teal-100",   td: "bg-teal-50" },
 };
 
-function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFrom, dateTo, onDateChange }: {
+function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFrom, dateTo, onDateChange, sortBy, sortDir, onSort }: {
   lots: StockLot[]; loading: boolean;
   colFilters: Record<ColKey, Set<string>>;
   cascadeValues: (k: ColKey) => string[];
   setFilter: (k: ColKey, s: Set<string>) => void;
   dateFrom: string; dateTo: string;
   onDateChange: (f: string, t: string) => void;
+  sortBy: "date" | "size" | null;
+  sortDir: "asc" | "desc";
+  onSort: (k: "date" | "size") => void;
 }) {
   if (loading) return <p className="text-center text-gray-400 py-10 text-sm">Loading...</p>;
 
@@ -340,9 +734,19 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
       <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-gray-50 text-left">
           <tr>
-            <th className={`px-3 py-3 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-100" : ""}`}><DateFilter from={dateFrom} to={dateTo} onChange={onDateChange} /></th>
+            <th className={`px-3 py-3 whitespace-nowrap ${(dateFrom || dateTo) ? "bg-sky-100" : ""}`}>
+              <div className="flex items-center gap-1">
+                <DateFilter from={dateFrom} to={dateTo} onChange={onDateChange} />
+                <button onClick={() => onSort("date")} className={`text-[10px] ml-1 ${sortBy==="date"?"text-blue-600":"text-gray-300 hover:text-gray-500"}`}>{sortBy==="date"?(sortDir==="asc"?"▲":"▼"):"⇅"}</button>
+              </div>
+            </th>
             <th className={thCls("grade")}><ColumnFilter label={COL_LABELS["grade"]} values={cascadeValues("grade")} selected={colFilters["grade"]} onChange={(s) => setFilter("grade", s)} /></th>
-            <th className={thCls("size")}><ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} /></th>
+            <th className={thCls("size")}>
+              <div className="flex items-center gap-1">
+                <ColumnFilter label={COL_LABELS["size"]} values={cascadeValues("size")} selected={colFilters["size"]} onChange={(s) => setFilter("size", s)} />
+                <button onClick={() => onSort("size")} className={`text-[10px] ml-1 ${sortBy==="size"?"text-blue-600":"text-gray-300 hover:text-gray-500"}`}>{sortBy==="size"?(sortDir==="asc"?"▲":"▼"):"⇅"}</button>
+              </div>
+            </th>
             <th className={thCls("supplyCondition")}><ColumnFilter label={COL_LABELS["supplyCondition"]} values={cascadeValues("supplyCondition")} selected={colFilters["supplyCondition"]} onChange={(s) => setFilter("supplyCondition", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Qty</th>
             <th className={thCls("location")}><ColumnFilter label={COL_LABELS["location"]} values={cascadeValues("location")} selected={colFilters["location"]} onChange={(s) => setFilter("location", s)} /></th>
@@ -350,14 +754,15 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
             <th className={thCls("description")}><ColumnFilter label={COL_LABELS["description"]} values={cascadeValues("description")} selected={colFilters["description"]} onChange={(s) => setFilter("description", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">UID No.</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Pieces</th>
-            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Sub Loc</th>
+            <th className={thCls("subLoc")}><ColumnFilter label={COL_LABELS["subLoc"]} values={cascadeValues("subLoc")} selected={colFilters["subLoc"]} onChange={(s) => setFilter("subLoc", s)} /></th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap text-right">Length</th>
             <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">Remarks</th>
+            <th className="px-3 py-3 font-medium text-gray-600 whitespace-nowrap">JW No.</th>
           </tr>
         </thead>
         <tbody>
           {lots.length === 0 && (
-            <tr><td colSpan={14} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
+            <tr><td colSpan={15} className="text-center text-gray-400 py-10">No lots match the current filters.</td></tr>
           )}
           {lots.map((lot) => (
             <tr key={lot.id} className="border-t border-gray-100 hover:brightness-95">
@@ -375,9 +780,10 @@ function LotTable({ lots, loading, colFilters, cascadeValues, setFilter, dateFro
               </td>
               <td className="px-3 py-2">{lot.uidNo ?? "—"}</td>
               <td className="px-3 py-2 text-right">{lot.pieces ?? "—"}</td>
-              <td className="px-3 py-2">{(lot as { subLoc?: string | null }).subLoc ?? "—"}</td>
+              <td className={tdCls("subLoc")}>{(lot as { subLoc?: string | null }).subLoc ?? "—"}</td>
               <td className="px-3 py-2 text-right">{lot.length ?? "—"}</td>
               <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{lot.remarks ?? "—"}</td>
+              <td className="px-3 py-2 font-medium text-indigo-700">{lot.jwNo ?? "—"}</td>
             </tr>
           ))}
         </tbody>

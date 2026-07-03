@@ -21,23 +21,41 @@ export async function POST(req: Request) {
   if (error) return error;
   const user = session!.user as { id: string };
   const body = await req.json();
-  const { stage } = body;
+  const { stage, locationFrom, lotsJson } = body;
+
+  if (!locationFrom || !lotsJson?.length) {
+    return NextResponse.json({ error: "Missing locationFrom or lots" }, { status: 400 });
+  }
 
   if (stage === "instruction") {
-    const { date, grade, size, quantity, make, uidNo, pieces, subLoc, supplyCondition, customer, vehicleNo, remarks } = body;
-    if (!date || !grade || !size || !quantity || !make || !supplyCondition || !customer) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
     const entry = await prisma.sale.create({
       data: {
         status: "instruction",
-        instrDate: new Date(date), instrGrade: grade, instrSize: size,
-        instrQuantity: parseFloat(quantity), instrMake: make,
-        instrUidNo: uidNo || null, instrPieces: pieces ? parseInt(pieces) : null,
-        instrSubLoc: subLoc || null,
-        instrSupplyCondition: supplyCondition, instrCustomer: customer,
-        instrVehicleNo: vehicleNo || null, instrRemarks: remarks || null,
-        instructedById: user.id, instructedAt: new Date(),
+        entryType: "instruction",
+        locationFrom,
+        instrLotsJson: JSON.stringify(lotsJson),
+        instructedById: user.id,
+        instructedAt: new Date(),
+      },
+    });
+    return NextResponse.json(entry, { status: 201 });
+  }
+
+  if (stage === "direct_actuals") {
+    for (const l of lotsJson) {
+      const lot = await prisma.stockLot.findUnique({ where: { id: l.lotId } });
+      if (!lot || lot.quantity < l.detail.qty) {
+        return NextResponse.json({ error: `Lot has insufficient quantity` }, { status: 409 });
+      }
+    }
+    const entry = await prisma.sale.create({
+      data: {
+        status: "actuals_filled",
+        entryType: "direct",
+        locationFrom,
+        actLotsJson: JSON.stringify(lotsJson),
+        actualsFilledById: user.id,
+        actualsFilledAt: new Date(),
       },
     });
     return NextResponse.json(entry, { status: 201 });

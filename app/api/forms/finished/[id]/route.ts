@@ -2,61 +2,80 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const { error } = await requireSession();
-  if (error) return error;
-  const entry = await prisma.finishedGoodsTransfer.findUnique({
-    where: { id: params.id },
-    include: {
-      actualsFilledBy: { select: { name: true, role: true } },
-      verifiedBy: { select: { name: true, role: true } },
-    },
-  });
-  if (!entry) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(entry);
-}
+type Section = { date: string; qty: number; supplyCondition: string; sizeFinal: string; locationFinal: string; subLocFinal?: string; suspenseQty: number; pieces?: number; remarks?: string };
+type LotSection = { lotId: string; lotSnapshot: { grade: string; make: string; description: string; uidNo?: string; subLoc?: string; quantity: number; pieces?: number }; sections: Section[] };
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   const { session, error } = await requireSession();
   if (error) return error;
   const user = session!.user as { id: string; role: string };
   const body = await req.json();
-  const { stage } = body;
   const existing = await prisma.finishedGoodsTransfer.findUnique({ where: { id: params.id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (stage === "verify") {
+  if (body.stage === "verify") {
     if (user.role !== "verifier") return NextResponse.json({ error: "Verifier only" }, { status: 403 });
-    if (existing.status !== "actuals_filled") {
-      return NextResponse.json({ error: "Can only verify actuals_filled" }, { status: 409 });
+    if (existing.status !== "actuals_filled") return NextResponse.json({ error: "Not actuals_filled" }, { status: 409 });
+
+    const lotSections: LotSection[] = JSON.parse(existing.lotSectionsJson || "[]");
+
+    // Re-validate quantities
+    for (const ls of lotSections) {
+      const lot = await prisma.stockLot.findUnique({ where: { id: ls.lotId } });
+      if (!lot) return NextResponse.json({ error: "Lot not found" }, { status: 404 });
+      const total = ls.sections.reduce((s, sec) => s + (sec.qty || 0) + (sec.suspenseQty || 0), 0);
+      if (total > lot.quantity + 0.001) {
+        return NextResponse.json({ error: `Lot ${lot.grade} ${lot.size} has insufficient quantity` }, { status: 409 });
+      }
     }
-    const deduct = existing.quantityFinal + existing.suspenseQty;
-    const lot = await prisma.stockLot.findUnique({ where: { id: existing.sourceLotId! } });
-    if (!lot || lot.quantity < deduct) {
-      return NextResponse.json({ error: "This lot does not have sufficient quantity remaining." }, { status: 409 });
-    }
+
+    const createdIds: string[] = [];
     await prisma.$transaction(async (tx) => {
-      await tx.stockLot.update({ where: { id: existing.sourceLotId! }, data: { quantity: { decrement: deduct } } });
-      const newLot = await tx.stockLot.create({
-        data: {
-          grade: existing.gradeFinal, size: existing.sizeFinal,
-          supplyCondition: existing.supplyCondition, make: existing.make,
-          location: existing.locationFinal, quantity: existing.quantityFinal,
-          pieces: existing.pieces, description: "Prime",
-          uidNo: existing.uidNo, subLoc: (existing as { subLocFinal?: string | null }).subLocFinal || null, dateCreated: existing.date,
-          originForm: "finished_goods", originId: params.id,
-        },
-      });
-      if (existing.suspenseQty > 0) {
-        await tx.suspenseTotal.upsert({
-          where: { location: existing.locationInitial },
-          update: { total: { increment: existing.suspenseQty } },
-          create: { location: existing.locationInitial, total: existing.suspenseQty },
+      for (const ls of lotSections) {
+        const totalDeduct = ls.sections.reduce((s, sec) => s + (sec.qty || 0) + (sec.suspenseQty || 0), 0);
+        const srcLot = await tx.stockLot.findUnique({ where: { id: ls.lotId } });
+        const remainingQty = (srcLot?.quantity ?? 0) - totalDeduct;
+        await tx.stockLot.update({
+          where: { id: ls.lotId },
+          data: { quantity: { decrement: totalDeduct }, ...(remainingQty <= 0.001 ? { active: false } : {}) },
         });
+
+        const totalSuspense = ls.sections.reduce((s, sec) => s + (sec.suspenseQty || 0), 0);
+        if (totalSuspense > 0) {
+          await tx.suspenseTotal.upsert({
+            where: { location: existing.locationInitial! },
+            update: { total: { increment: totalSuspense } },
+            create: { location: existing.locationInitial!, total: totalSuspense },
+          });
+        }
+
+        for (const sec of ls.sections) {
+          if (sec.qty > 0) {
+            const newLot = await tx.stockLot.create({
+              data: {
+                grade: ls.lotSnapshot.grade,
+                make: ls.lotSnapshot.make,
+                description: ls.lotSnapshot.description,
+                uidNo: ls.lotSnapshot.uidNo || null,
+                subLoc: sec.subLocFinal || null,
+                size: sec.sizeFinal,
+                supplyCondition: sec.supplyCondition,
+                location: sec.locationFinal,
+                quantity: sec.qty,
+                pieces: sec.pieces ?? null,
+                remarks: sec.remarks || null,
+                dateCreated: new Date(sec.date),
+                originForm: "finished_goods",
+                originId: params.id,
+              },
+            });
+            createdIds.push(newLot.id);
+          }
+        }
       }
       await tx.finishedGoodsTransfer.update({
         where: { id: params.id },
-        data: { status: "verified", verifiedById: user.id, verifiedAt: new Date(), createdLotId: newLot.id },
+        data: { status: "verified", verifiedById: user.id, verifiedAt: new Date(), createdLotIds: JSON.stringify(createdIds) },
       });
     });
     return NextResponse.json({ ok: true });
@@ -74,29 +93,27 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   if (existing.status === "verified" && user.role !== "verifier") {
     return NextResponse.json({ error: "Only verifiers can delete verified entries" }, { status: 403 });
   }
-
   await prisma.$transaction(async (tx) => {
     if (existing.status === "verified") {
-      if (existing.createdLotId) {
-        await tx.stockLot.update({ where: { id: existing.createdLotId }, data: { active: false } });
+      const createdIds: string[] = JSON.parse(existing.createdLotIds || "[]");
+      for (const id of createdIds) {
+        await tx.stockLot.update({ where: { id }, data: { active: false } });
       }
-      await tx.stockLot.update({
-        where: { id: existing.sourceLotId! },
-        data: { quantity: { increment: existing.quantityFinal + existing.suspenseQty } },
-      });
-      if (existing.suspenseQty > 0) {
-        await tx.suspenseTotal.update({
-          where: { location: existing.locationInitial },
-          data: { total: { decrement: existing.suspenseQty } },
-        });
+      const lotSections: LotSection[] = JSON.parse(existing.lotSectionsJson || "[]");
+      for (const ls of lotSections) {
+        const totalDeduct = ls.sections.reduce((s, sec) => s + (sec.qty || 0) + (sec.suspenseQty || 0), 0);
+        await tx.stockLot.update({ where: { id: ls.lotId }, data: { quantity: { increment: totalDeduct } } });
+        const totalSuspense = ls.sections.reduce((s, sec) => s + (sec.suspenseQty || 0), 0);
+        if (totalSuspense > 0) {
+          await tx.suspenseTotal.update({
+            where: { location: existing.locationInitial! },
+            data: { total: { decrement: totalSuspense } },
+          });
+        }
       }
     }
     await tx.correctionLog.create({
-      data: {
-        tableRef: "FinishedGoodsTransfer", recordId: params.id, field: "ALL",
-        oldValue: JSON.stringify(existing), newValue: null,
-        action: "delete", performedById: user.id,
-      },
+      data: { tableRef: "FinishedGoodsTransfer", recordId: params.id, field: "ALL", oldValue: JSON.stringify(existing), newValue: null, action: "delete", performedById: user.id },
     });
     await tx.finishedGoodsTransfer.delete({ where: { id: params.id } });
   });
